@@ -25,6 +25,7 @@ const RATIOS = {
 let isDrawing = false;
 let lastPoints = [];
 let centerX, centerY;
+let isFreestyleMode = false; // --- 追加：フリースタイルモードの状態 ---
 
 // --- 履歴管理の変数 ---
 let history = [];
@@ -120,35 +121,53 @@ function getCanvasCoordinates(e) {
     return { x: canvasX, y: canvasY };
 }
 
+// --- 修正：startDrawing ---
 function startDrawing(e) {
+    // 色をランダムに決定
     const randomHex = Math.floor(Math.random() * 16777215).toString(16);
     const randomColor = `#${randomHex.padStart(6, '0')}`;
     colorPicker.value = randomColor;
 
     isDrawing = true;
     const coords = getCanvasCoordinates(e);
-    lastPoints = getSymmetricPoints(coords.x, coords.y);
+
+    // モードに応じて保存する座標を変更
+    if (isFreestyleMode) {
+        lastPoints = [coords]; // 自由描画モード：座標1点のみ
+    } else {
+        lastPoints = getSymmetricPoints(coords.x, coords.y); // シンメトリー：8点
+    }
 }
 
+// --- 修正：draw ---
 function draw(e) {
     if (!isDrawing) return;
     e.preventDefault();
+
     const coords = getCanvasCoordinates(e);
-    const currentPoints = getSymmetricPoints(coords.x, coords.y);
+    let currentPoints;
+
+    // モードに応じて現在の座標を取得
+    if (isFreestyleMode) {
+        currentPoints = [coords]; // 自由描画モード：座標1点
+    } else {
+        currentPoints = getSymmetricPoints(coords.x, coords.y); // シンメトリー：8点
+    }
 
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    ctx.strokeStyle = colorPicker.value; // startDrawingで設定された色を使用
+    ctx.strokeStyle = colorPicker.value;
     ctx.lineWidth = widthSlider.value;
 
-    // ループ回数を4から8に変更
-    for (let i = 0; i < 8; i++) {
+    // lastPointsの数（1 or 8）だけループして描画
+    for (let i = 0; i < lastPoints.length; i++) {
         ctx.beginPath();
         ctx.moveTo(lastPoints[i].x, lastPoints[i].y);
         ctx.lineTo(currentPoints[i].x, currentPoints[i].y);
         ctx.stroke();
     }
-    lastPoints = currentPoints;
+
+    lastPoints = currentPoints; // 座標を更新
 }
 
 function stopDrawing() {
@@ -192,6 +211,37 @@ saveButton.addEventListener("click", () => {
     link.click();
 });
 
+// --- 追加：フリースタイルモードのボタン ---
+const freestyleBtn = document.createElement("button");
+freestyleBtn.textContent = "自由に書く 🎨";
+freestyleBtn.id = "freestyle-btn";
+freestyleBtn.style.backgroundColor = "#ffc107"; // 目立つ色
+freestyleBtn.style.color = "#212529";
+freestyleBtn.style.marginLeft = "10px";
+
+// アップロードボタンをアクションコントロールに追加
+const actionControls = document.querySelector(".action-controls");
+// --- 追加：フリースタイルボタンをクリアボタンの隣に配置 ---
+clearButton.insertAdjacentElement('afterend', freestyleBtn);
+
+// --- 追加：フリースタイルボタンのイベントリスナー ---
+freestyleBtn.addEventListener("click", () => {
+    isFreestyleMode = !isFreestyleMode; // モードをトグル
+
+    if (isFreestyleMode) {
+        freestyleBtn.textContent = "シンメトリー 💠";
+        freestyleBtn.style.backgroundColor = "#17a2b8"; // アクティブ時の色
+        freestyleBtn.style.color = "white";
+        freestyleBtn.classList.add("active");
+    } else {
+        freestyleBtn.textContent = "自由に書く 🎨";
+        freestyleBtn.style.backgroundColor = "#ffc107"; // 非アクティブ時の色
+        freestyleBtn.style.color = "#212529";
+        freestyleBtn.classList.remove("active");
+    }
+});
+
+
 // アップロード機能
 const uploadButton = document.createElement("button");
 uploadButton.textContent = "アップロード";
@@ -199,8 +249,7 @@ uploadButton.id = "upload-button";
 uploadButton.style.backgroundColor = "#28a745";
 uploadButton.style.marginLeft = "10px";
 
-// アップロードボタンをアクションコントロールに追加
-const actionControls = document.querySelector(".action-controls");
+// アクションコントロールにアップロードボタンを追加
 actionControls.appendChild(uploadButton);
 
 // アップロード処理
