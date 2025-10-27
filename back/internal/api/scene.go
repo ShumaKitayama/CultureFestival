@@ -182,3 +182,83 @@ func (h *SceneHandler) ResetScene(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "Scene reset successfully"})
 }
+
+func (h *SceneHandler) UpdateEntity(c *gin.Context) {
+	sceneIDStr := c.Param("id")
+	entityIDStr := c.Param("entity_id")
+	
+	sceneID, err := strconv.ParseUint(sceneIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid scene ID"})
+		return
+	}
+	
+	entityID, err := strconv.ParseUint(entityIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid entity ID"})
+		return
+	}
+
+	var updateData struct {
+		AnimationKind string `json:"animation_kind"`
+	}
+
+	if err := c.ShouldBindJSON(&updateData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request data"})
+		return
+	}
+
+	entity, err := h.entityRepo.GetByID(uint(entityID))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Entity not found"})
+		return
+	}
+
+	if entity.SceneID != uint(sceneID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Entity does not belong to this scene"})
+		return
+	}
+
+	entity.AnimationKind = updateData.AnimationKind
+	if err := h.entityRepo.Update(entity); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update entity"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Entity updated successfully"})
+}
+
+func (h *SceneHandler) DeleteEntity(c *gin.Context) {
+	sceneIDStr := c.Param("id")
+	entityIDStr := c.Param("entity_id")
+	
+	sceneID, err := strconv.ParseUint(sceneIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid scene ID"})
+		return
+	}
+	
+	entityID, err := strconv.ParseUint(entityIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid entity ID"})
+		return
+	}
+
+	entity, err := h.entityRepo.GetByID(uint(entityID))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Entity not found"})
+		return
+	}
+
+	if entity.SceneID != uint(sceneID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Entity does not belong to this scene"})
+		return
+	}
+
+	if err := h.entityRepo.Delete(uint(entityID)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete entity"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Entity deleted successfully"})
+}

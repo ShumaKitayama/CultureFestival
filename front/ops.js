@@ -1,8 +1,10 @@
 class OpsSystem {
   constructor() {
     this.artworks = [];
+    this.selectedArtwork = null;
     this.systemStatus = "正常動作中";
     this.activeEntities = 0;
+    this.currentSceneId = 1;
 
     this.init();
   }
@@ -18,6 +20,27 @@ class OpsSystem {
       .getElementById("load-artworks-btn")
       .addEventListener("click", () => {
         this.loadArtworks();
+      });
+
+    // アニメーション適用
+    document
+      .getElementById("apply-animation-btn")
+      .addEventListener("click", () => {
+        this.applyAnimation();
+      });
+
+    // シーンに追加
+    document
+      .getElementById("add-to-scene-btn")
+      .addEventListener("click", () => {
+        this.addToScene();
+      });
+
+    // シーンから削除
+    document
+      .getElementById("remove-from-scene-btn")
+      .addEventListener("click", () => {
+        this.removeFromScene();
       });
 
     // 状態更新
@@ -43,168 +66,252 @@ class OpsSystem {
 
       if (response.ok) {
         this.artworks = await response.json();
-        this.renderArtworks();
-        this.showStatus("アートワーク一覧を読み込みました", "success");
+        this.renderArtworksList();
+        this.showStatus("作品一覧を読み込みました", "success");
       } else {
         throw new Error("Failed to load artworks");
       }
     } catch (error) {
       console.error("Artworks load failed:", error);
-      this.showStatus("アートワークの読み込みに失敗しました", "error");
+      this.showStatus("作品の読み込みに失敗しました", "error");
     }
   }
 
-  renderArtworks() {
-    const container = document.getElementById("artworks-container");
+  renderArtworksList() {
+    const container = document.getElementById("artworks-list");
 
     if (this.artworks.length === 0) {
-      container.innerHTML = "<p>アートワークがありません</p>";
+      container.innerHTML = "<p>作品がありません</p>";
       return;
     }
 
     container.innerHTML = this.artworks
       .map((artwork) => {
-        const tags = artwork.tags ? JSON.parse(artwork.tags) : [];
-        const tagsText = Array.isArray(tags) ? tags.join(", ") : "";
-
+        const title = artwork.title || "無題";
         return `
-          <div class="artwork-item">
-            <img src="/download/${artwork.qr_token}?thumb=true" alt="${
-          artwork.title || "無題"
-        }" />
-            <h3>${artwork.title || "無題"}</h3>
-            <p><strong>ID:</strong> ${artwork.id}</p>
-            <p><strong>タグ:</strong> ${tagsText}</p>
-            <p><strong>作成日:</strong> ${new Date(
-              artwork.created_at
-            ).toLocaleString()}</p>
-            <div class="form-group">
-              <label>アニメーション:</label>
-              <select class="animation-select" data-artwork-id="${artwork.id}">
-                <option value="pulsate" ${
-                  this.getCurrentAnimation(artwork.id) === "pulsate"
-                    ? "selected"
-                    : ""
-                }>脈動 (pulsate)</option>
-                <option value="disperse" ${
-                  this.getCurrentAnimation(artwork.id) === "disperse"
-                    ? "selected"
-                    : ""
-                }>分散 (disperse)</option>
-                <option value="explode" ${
-                  this.getCurrentAnimation(artwork.id) === "explode"
-                    ? "selected"
-                    : ""
-                }>爆発 (explode)</option>
-                <option value="spin_fight" ${
-                  this.getCurrentAnimation(artwork.id) === "spin_fight"
-                    ? "selected"
-                    : ""
-                }>回転戦闘 (spin_fight)</option>
-                <option value="stream_in" ${
-                  this.getCurrentAnimation(artwork.id) === "stream_in"
-                    ? "selected"
-                    : ""
-                }>流れ込み (stream_in)</option>
-              </select>
-            </div>
-            <button class="update-animation-btn" data-artwork-id="${
-              artwork.id
-            }">
-              アニメーション更新
-            </button>
-            <button class="remove-artwork-btn danger" data-artwork-id="${
-              artwork.id
-            }">
-              削除
-            </button>
+          <div class="artwork-item" data-artwork-id="${artwork.id}">
+            <span class="artwork-name">${title}</span>
+            <span class="artwork-id">(ID: ${artwork.id})</span>
           </div>
         `;
       })
       .join("");
 
-    // イベントリスナーを追加
-    container.querySelectorAll(".update-animation-btn").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        const artworkId = e.target.dataset.artworkId;
-        const select = container.querySelector(
-          `select[data-artwork-id="${artworkId}"]`
-        );
-        this.updateArtworkAnimation(artworkId, select.value);
-      });
-    });
-
-    container.querySelectorAll(".remove-artwork-btn").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        const artworkId = e.target.dataset.artworkId;
-        this.removeArtwork(artworkId);
+    // クリックイベントを追加
+    container.querySelectorAll(".artwork-item").forEach((item) => {
+      item.addEventListener("click", (e) => {
+        const artworkId = parseInt(e.currentTarget.dataset.artworkId);
+        this.selectArtwork(artworkId);
       });
     });
   }
 
-  getCurrentAnimation(artworkId) {
-    // ローカルストレージから取得（実際の実装ではAPIから取得）
-    return localStorage.getItem(`animation_${artworkId}`) || "pulsate";
-  }
+  selectArtwork(artworkId) {
+    this.selectedArtwork = this.artworks.find((a) => a.id === artworkId);
 
-  async updateArtworkAnimation(artworkId, animation) {
-    try {
-      // アニメーション設定を保存
-      localStorage.setItem(`animation_${artworkId}`, animation);
+    if (this.selectedArtwork) {
+      // 選択状態を更新
+      document.querySelectorAll(".artwork-item").forEach((item) => {
+        item.classList.remove("selected");
+      });
+      document
+        .querySelector(`[data-artwork-id="${artworkId}"]`)
+        .classList.add("selected");
 
-      // 実際のAPI呼び出し（エンティティのアニメーション更新）
-      const response = await fetch(
-        `/api/scenes/1/entities/${artworkId}/animation`,
-        {
-          method: "PUT",
-          headers: {
-            "X-API-Key": "ops_dev_key_12345",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ animation_kind: animation }),
-        }
+      // 選択された作品名を表示
+      document.getElementById("selected-artwork-name").textContent =
+        this.selectedArtwork.title || "無題";
+
+      // アニメーション設定画面を表示
+      document.getElementById("animation-settings").classList.remove("hidden");
+
+      this.showStatus(
+        `「${this.selectedArtwork.title || "無題"}」を選択しました`,
+        "info"
       );
-
-      if (response.ok) {
-        this.showStatus(
-          `アートワーク ${artworkId} のアニメーションを「${animation}」に更新しました`,
-          "success"
-        );
-      } else {
-        // APIが未実装でもローカル保存は成功
-        this.showStatus(
-          `アートワーク ${artworkId} のアニメーションを「${animation}」に設定しました`,
-          "info"
-        );
-      }
-    } catch (error) {
-      console.error("Animation update failed:", error);
-      this.showStatus("アニメーションの更新に失敗しました", "error");
     }
   }
 
-  async removeArtwork(artworkId) {
-    if (!confirm(`アートワーク ${artworkId} を削除しますか？`)) {
+  async applyAnimation() {
+    if (!this.selectedArtwork) {
+      this.showStatus("作品を選択してください", "error");
       return;
     }
 
+    const animation = document.getElementById("animation-select").value;
+    const x = parseFloat(document.getElementById("position-x").value);
+    const y = parseFloat(document.getElementById("position-y").value);
+    const scale = parseFloat(document.getElementById("scale").value);
+
     try {
-      const response = await fetch(`/api/artworks/${artworkId}`, {
-        method: "DELETE",
+      // 既存のエンティティを検索
+      const response = await fetch(`/api/scenes/${this.currentSceneId}`, {
         headers: {
           "X-API-Key": "ops_dev_key_12345",
         },
       });
 
       if (response.ok) {
-        this.showStatus(`アートワーク ${artworkId} を削除しました`, "success");
-        this.loadArtworks(); // 一覧を再読み込み
-      } else {
-        throw new Error("Delete failed");
+        const scene = await response.json();
+        const existingEntity = scene.entities.find(
+          (e) => e.artwork_id === this.selectedArtwork.id
+        );
+
+        if (existingEntity) {
+          // 既存のエンティティを更新
+          await this.updateEntity(existingEntity.id, animation, x, y, scale);
+        } else {
+          // 新しいエンティティを追加
+          await this.addEntity(animation, x, y, scale);
+        }
       }
     } catch (error) {
-      console.error("Delete failed:", error);
-      this.showStatus("アートワークの削除に失敗しました", "error");
+      console.error("Apply animation failed:", error);
+      this.showStatus("アニメーションの適用に失敗しました", "error");
+    }
+  }
+
+  async addToScene() {
+    if (!this.selectedArtwork) {
+      this.showStatus("作品を選択してください", "error");
+      return;
+    }
+
+    const animation = document.getElementById("animation-select").value;
+    const x = parseFloat(document.getElementById("position-x").value);
+    const y = parseFloat(document.getElementById("position-y").value);
+    const scale = parseFloat(document.getElementById("scale").value);
+
+    await this.addEntity(animation, x, y, scale);
+  }
+
+  async removeFromScene() {
+    if (!this.selectedArtwork) {
+      this.showStatus("作品を選択してください", "error");
+      return;
+    }
+
+    try {
+      // 既存のエンティティを検索
+      const response = await fetch(`/api/scenes/${this.currentSceneId}`, {
+        headers: {
+          "X-API-Key": "ops_dev_key_12345",
+        },
+      });
+
+      if (response.ok) {
+        const scene = await response.json();
+        const existingEntity = scene.entities.find(
+          (e) => e.artwork_id === this.selectedArtwork.id
+        );
+
+        if (existingEntity) {
+          await this.deleteEntity(existingEntity.id);
+        } else {
+          this.showStatus("この作品はシーンに存在しません", "error");
+        }
+      }
+    } catch (error) {
+      console.error("Remove from scene failed:", error);
+      this.showStatus("シーンからの削除に失敗しました", "error");
+    }
+  }
+
+  async addEntity(animation, x, y, scale) {
+    try {
+      const response = await fetch(
+        `/api/scenes/${this.currentSceneId}/entities`,
+        {
+          method: "POST",
+          headers: {
+            "X-API-Key": "ops_dev_key_12345",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            artwork_id: this.selectedArtwork.id,
+            init_x: x,
+            init_y: y,
+            init_vx: 0,
+            init_vy: 0,
+            init_angle: 0,
+            init_scale: scale,
+            animation_kind: animation,
+          }),
+        }
+      );
+
+      if (response.ok) {
+        this.showStatus(
+          `「${this.selectedArtwork.title || "無題"}」をシーンに追加しました`,
+          "success"
+        );
+      } else {
+        throw new Error("Failed to add entity");
+      }
+    } catch (error) {
+      console.error("Add entity failed:", error);
+      this.showStatus("シーンへの追加に失敗しました", "error");
+    }
+  }
+
+  async updateEntity(entityId, animation, x, y, scale) {
+    try {
+      const response = await fetch(
+        `/api/scenes/${this.currentSceneId}/entities/${entityId}`,
+        {
+          method: "PUT",
+          headers: {
+            "X-API-Key": "ops_dev_key_12345",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            animation_kind: animation,
+            init_x: x,
+            init_y: y,
+            init_scale: scale,
+          }),
+        }
+      );
+
+      if (response.ok) {
+        this.showStatus(
+          `「${
+            this.selectedArtwork.title || "無題"
+          }」のアニメーションを更新しました`,
+          "success"
+        );
+      } else {
+        throw new Error("Failed to update entity");
+      }
+    } catch (error) {
+      console.error("Update entity failed:", error);
+      this.showStatus("アニメーションの更新に失敗しました", "error");
+    }
+  }
+
+  async deleteEntity(entityId) {
+    try {
+      const response = await fetch(
+        `/api/scenes/${this.currentSceneId}/entities/${entityId}`,
+        {
+          method: "DELETE",
+          headers: {
+            "X-API-Key": "ops_dev_key_12345",
+          },
+        }
+      );
+
+      if (response.ok) {
+        this.showStatus(
+          `「${this.selectedArtwork.title || "無題"}」をシーンから削除しました`,
+          "success"
+        );
+      } else {
+        throw new Error("Failed to delete entity");
+      }
+    } catch (error) {
+      console.error("Delete entity failed:", error);
+      this.showStatus("シーンからの削除に失敗しました", "error");
     }
   }
 
@@ -225,11 +332,13 @@ class OpsSystem {
           document.getElementById(
             "current-scene"
           ).textContent = `${mainScene.name} (${mainScene.width}x${mainScene.height})`;
+          this.activeEntities = mainScene.entities
+            ? mainScene.entities.length
+            : 0;
         }
       }
 
-      // エンティティ数を取得（簡易版）
-      this.activeEntities = this.artworks.length;
+      // エンティティ数を表示
       document.getElementById("active-entities").textContent =
         this.activeEntities;
 
@@ -250,21 +359,18 @@ class OpsSystem {
     }
 
     try {
-      // シーンリセット
-      const response = await fetch("/api/scenes/1/reset", {
+      const response = await fetch(`/api/scenes/${this.currentSceneId}/reset`, {
         method: "POST",
         headers: {
           "X-API-Key": "ops_dev_key_12345",
-          "Content-Type": "application/json",
         },
       });
 
       if (response.ok) {
-        this.showStatus("全リセットが完了しました", "success");
+        this.showStatus("全リセットを実行しました", "success");
         this.loadSystemStatus();
-        this.loadArtworks();
       } else {
-        throw new Error("Reset failed");
+        throw new Error("Failed to reset");
       }
     } catch (error) {
       console.error("Reset failed:", error);
@@ -273,14 +379,14 @@ class OpsSystem {
   }
 
   showStatus(message, type) {
-    const statusDiv = document.getElementById("status");
-    statusDiv.textContent = message;
-    statusDiv.className = `status ${type}`;
-    statusDiv.classList.remove("hidden");
+    const status = document.getElementById("status");
+    status.textContent = message;
+    status.className = `status status-${type}`;
+    status.classList.remove("hidden");
 
     // 3秒後に非表示
     setTimeout(() => {
-      statusDiv.classList.add("hidden");
+      status.classList.add("hidden");
     }, 3000);
   }
 }

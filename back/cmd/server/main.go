@@ -83,6 +83,8 @@ func main() {
 			scenes.GET("", sceneHandler.GetScenes)
 			scenes.GET("/:id", sceneHandler.GetSceneByID)
 			scenes.POST("/:id/entities", sceneHandler.AddEntity)
+			scenes.PUT("/:id/entities/:entity_id", sceneHandler.UpdateEntity)
+			scenes.DELETE("/:id/entities/:entity_id", sceneHandler.DeleteEntity)
 			scenes.POST("/:id/reset", sceneHandler.ResetScene)
 		}
 	}

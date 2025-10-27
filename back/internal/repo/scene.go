@@ -70,6 +70,23 @@ func (r *SceneEntityRepository) DeleteBySceneID(sceneID uint) error {
 	return r.db.Where("scene_id = ?", sceneID).Delete(&domain.SceneEntity{}).Error
 }
 
+func (r *SceneEntityRepository) GetByID(id uint) (*domain.SceneEntity, error) {
+	var entity domain.SceneEntity
+	err := r.db.First(&entity, id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &entity, nil
+}
+
+func (r *SceneEntityRepository) Update(entity *domain.SceneEntity) error {
+	return r.db.Save(entity).Error
+}
+
+func (r *SceneEntityRepository) Delete(id uint) error {
+	return r.db.Delete(&domain.SceneEntity{}, id).Error
+}
+
 type DisplayNodeRepository struct {
 	db *gorm.DB
 }
