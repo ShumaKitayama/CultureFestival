@@ -2,42 +2,76 @@ version: "3.8"
 
 services:
   postgres:
-    image: postgres:15
+    image: postgres:15-alpine
+    container_name: culture_festival_postgres
     environment:
-      POSTGRES_DB: flower_exhibit
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
+      POSTGRES_DB: exhibit
+      POSTGRES_USER: exhibit_user
+      POSTGRES_PASSWORD: exhibit_password
     ports:
       - "5432:5432"
     volumes:
-      - ./back/init.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - flower-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d flower_exhibit"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      - postgres_data:/var/lib/postgresql/data
+      - ./back/migrations:/docker-entrypoint-initdb.d
+
+  redis:
+    image: redis:6-alpine
+    container_name: culture_festival_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
 
   backend:
     build:
-      context: .
-      dockerfile: ./back/Dockerfile
+      context: ./back
+      dockerfile: Dockerfile
+    container_name: culture_festival_backend
     ports:
       - "8080:8080"
     environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: postgres
-      DB_PASSWORD: password
-      DB_NAME: flower_exhibit
-      PORT: 8080
+      - POSTGRES_DSN=postgres://exhibit_user:exhibit_password@postgres:5432/exhibit?sslmode=disable
+      - REDIS_URL=redis:6379
+      - ASSET_DIR=/data/assets
+      - BACKEND_PORT=8080
+    volumes:
+      - ./data:/data
+      - ./back:/app
     depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - flower-network
+      - postgres
+      - redis
+    command: ./main
 
-networks:
-  flower-network:
-    driver: bridge
+  upload-app:
+    build:
+      context: ./front
+      dockerfile: Dockerfile.upload
+    container_name: culture_festival_upload
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+  display-app:
+    build:
+      context: ./front
+      dockerfile: Dockerfile.display
+    container_name: culture_festival_display
+    ports:
+      - "3001:80"
+    depends_on:
+      - backend
+
+  ops-app:
+    build:
+      context: ./front
+      dockerfile: Dockerfile.ops
+    container_name: culture_festival_ops
+    ports:
+      - "3002:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  redis_data:

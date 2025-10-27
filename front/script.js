@@ -171,7 +171,7 @@ saveButton.addEventListener("click", () => {
   link.click();
 });
 
-// アップロード機能
+// アップロード機能を追加
 const uploadButton = document.createElement("button");
 uploadButton.textContent = "アップロード";
 uploadButton.id = "upload-button";
@@ -179,13 +179,11 @@ uploadButton.style.backgroundColor = "#28a745";
 uploadButton.style.marginLeft = "10px";
 
 // アップロードボタンをアクションコントロールに追加
-const actionControls = document.querySelector(".action-controls");
-actionControls.appendChild(uploadButton);
+document.querySelector(".action-controls").appendChild(uploadButton);
 
-// アップロード処理
 uploadButton.addEventListener("click", async () => {
   try {
-    // ガイド線なしの画像を取得
+    // ガイド線なしの画像を生成
     const initialImageData = history[0];
     const tempCanvas = document.createElement("canvas");
     tempCanvas.width = canvas.width;
@@ -197,117 +195,52 @@ uploadButton.addEventListener("click", async () => {
 
     // 画像をBlobに変換
     const blob = await new Promise((resolve) => {
-      tempCanvas.toBlob(resolve, "image/png", 0.9);
+      tempCanvas.toBlob(resolve, "image/png");
     });
 
     // FormDataを作成
     const formData = new FormData();
-    formData.append("image", blob, "flower.png");
+    formData.append("image", blob, "artwork.png");
 
-    // アップロード実行
+    // タイトルを取得（プロンプトで入力）
+    const title = prompt("作品のタイトルを入力してください（任意）:") || "";
+    formData.append("title", title);
+
+    // タグを取得（プロンプトで入力）
+    const tags = prompt("タグを入力してください（任意、カンマ区切り）:") || "";
+    formData.append("tags", tags);
+
+    // アップロード
     uploadButton.disabled = true;
     uploadButton.textContent = "アップロード中...";
 
-    const response = await fetch("http://localhost:8080/api/upload", {
+    const response = await fetch("/api/artworks", {
       method: "POST",
       body: formData,
     });
 
-    if (!response.ok) {
-      throw new Error(`アップロードエラー: ${response.status}`);
+    if (response.ok) {
+      const result = await response.json();
+      alert(
+        `アップロード成功！\n作品ID: ${result.artwork_id}\nQRトークン: ${result.qr_token}`
+      );
+
+      // キャンバスをクリア
+      const currentRatio = document
+        .querySelector(".ratio-controls button.active")
+        .id.replace("ratio-", "");
+      setupCanvas(currentRatio);
+    } else {
+      const error = await response.json();
+      alert(`アップロード失敗: ${error.error}`);
     }
-
-    const result = await response.json();
-
-    // 成功メッセージとQRコード表示
-    showUploadSuccess(result);
   } catch (error) {
-    console.error("アップロードエラー:", error);
-    alert("アップロードに失敗しました: " + error.message);
+    alert(`エラー: ${error.message}`);
   } finally {
     uploadButton.disabled = false;
     uploadButton.textContent = "アップロード";
   }
 });
-
-// アップロード成功時の処理
-function showUploadSuccess(result) {
-  // モーダル表示
-  const modal = document.createElement("div");
-  modal.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.8);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 10000;
-    `;
-
-  const content = document.createElement("div");
-  content.style.cssText = `
-        background: white;
-        padding: 30px;
-        border-radius: 15px;
-        text-align: center;
-        max-width: 400px;
-        width: 90%;
-    `;
-
-  content.innerHTML = `
-        <h2 style="color: #28a745; margin-bottom: 20px;">🎉 アップロード完了！</h2>
-        <p>あなたの絵が花として展示されました！</p>
-        <p><strong>位置:</strong> ${result.grid_x}列目, ${result.grid_y}行目</p>
-        <div style="margin: 20px 0;">
-            <p><strong>QRコードを読み取って画像を保存できます:</strong></p>
-            <div id="qrcode" style="margin: 15px 0;"></div>
-        </div>
-        <button id="close-modal" style="
-            background: #007bff;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-        ">閉じる</button>
-    `;
-
-  modal.appendChild(content);
-  document.body.appendChild(modal);
-
-  // QRコード生成（簡易版）
-  const qrDiv = document.getElementById("qrcode");
-  const qrUrl = `http://localhost:8080${result.qr_code_url}`;
-  qrDiv.innerHTML = `
-        <div style="
-            border: 2px solid #ddd;
-            padding: 20px;
-            margin: 10px 0;
-            background: #f8f9fa;
-            border-radius: 8px;
-        ">
-            <p><strong>ダウンロードURL:</strong></p>
-            <p style="word-break: break-all; font-size: 12px; color: #666;">${qrUrl}</p>
-            <p style="margin-top: 10px; font-size: 14px;">このURLを別の端末で開いて画像をダウンロードできます</p>
-        </div>
-    `;
-
-  // モーダル閉じる
-  document.getElementById("close-modal").addEventListener("click", () => {
-    document.body.removeChild(modal);
-  });
-
-  // 背景クリックで閉じる
-  modal.addEventListener("click", (e) => {
-    if (e.target === modal) {
-      document.body.removeChild(modal);
-    }
-  });
-}
 
 ratioLandscapeBtn.addEventListener("click", () => setupCanvas("landscape"));
 ratioPortraitBtn.addEventListener("click", () => setupCanvas("portrait"));

@@ -1,24 +1,35 @@
-FROM golang:1.21-alpine AS builder
+FROM golang:1.23-alpine AS builder
 
 WORKDIR /app
-COPY back/go.mod back/go.sum ./
+
+# 必要なパッケージをインストール
+RUN apk add --no-cache git gcc musl-dev
+
+# go.modとgo.sumをコピー
+COPY go.mod go.sum ./
+
+# 依存関係をダウンロード
 RUN go mod download
 
-COPY back/ .
-RUN go build -o main .
+# ソースコードをコピー
+COPY . .
 
+# アプリケーションをビルド
+RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o main cmd/server/main.go
+
+# 最終的なイメージ
 FROM alpine:latest
-RUN apk --no-cache add ca-certificates
+
+# 必要なパッケージをインストール
+RUN apk --no-cache add ca-certificates tzdata
+
 WORKDIR /root/
 
+# ビルドしたバイナリをコピー
 COPY --from=builder /app/main .
 
-# フロントエンドファイルをコピー
-COPY front ./front
-COPY display ./display
-
-# uploadsディレクトリを作成
-RUN mkdir -p uploads
-
+# ポートを公開
 EXPOSE 8080
+
+# アプリケーションを実行
 CMD ["./main"]
