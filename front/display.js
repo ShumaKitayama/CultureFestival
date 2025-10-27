@@ -201,6 +201,29 @@ class DisplaySystem {
     img.style.height = "100%";
     img.style.objectFit = "contain";
 
+    // 画像読み込みエラーハンドリング
+    img.onerror = (e) => {
+      console.error("Failed to load image:", entity.artworkUrl, e);
+      // エラー時はプレースホルダーを表示
+      img.style.display = "none";
+      const placeholder = document.createElement("div");
+      placeholder.style.width = "100%";
+      placeholder.style.height = "100%";
+      placeholder.style.border = "2px solid #fff";
+      placeholder.style.display = "flex";
+      placeholder.style.alignItems = "center";
+      placeholder.style.justifyContent = "center";
+      placeholder.style.backgroundColor = "rgba(0,0,0,0.1)";
+      placeholder.innerHTML = "?";
+      placeholder.style.color = "#fff";
+      placeholder.style.fontSize = "24px";
+      div.appendChild(placeholder);
+    };
+
+    img.onload = () => {
+      console.log("Image loaded successfully:", entity.artworkUrl);
+    };
+
     div.appendChild(img);
     return div;
   }

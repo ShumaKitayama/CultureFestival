@@ -209,11 +209,16 @@ func (h *ArtworkHandler) Download(c *gin.Context) {
 	token := c.Param("token")
 	thumb := c.Query("thumb") == "true"
 
+	fmt.Printf("Download request: token=%s, thumb=%v\n", token, thumb)
+	
 	artwork, err := h.artworkRepo.GetByQRToken(token)
 	if err != nil {
+		fmt.Printf("Artwork not found: token=%s, error=%v\n", token, err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Artwork not found"})
 		return
 	}
+	
+	fmt.Printf("Artwork found: id=%d, thumb_path=%s\n", artwork.ID, artwork.ThumbPath)
 
 	var filePath string
 	if thumb {

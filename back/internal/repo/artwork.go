@@ -3,6 +3,7 @@ package repo
 import (
 	"culture-festival-backend/internal/domain"
 	"math/rand"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -31,7 +32,9 @@ func (r *ArtworkRepository) GetByID(id uint) (*domain.Artwork, error) {
 
 func (r *ArtworkRepository) GetByQRToken(token string) (*domain.Artwork, error) {
 	var artwork domain.Artwork
-	err := r.db.Preload("Asset").Preload("User").Where("qr_token = ?", token).First(&artwork).Error
+	// トークンの前後の空白をトリム
+	trimmedToken := strings.TrimSpace(token)
+	err := r.db.Preload("Asset").Preload("User").Where("TRIM(qr_token) = ?", trimmedToken).First(&artwork).Error
 	if err != nil {
 		return nil, err
 	}
