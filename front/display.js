@@ -16,6 +16,17 @@ class DisplaySystem {
     this.lastTime = 0;
     this.frameCount = 0;
 
+    // 20個集合→弾けリセット機能
+    this.resetAnimation = {
+      isActive: false,
+      phase: 'gather', // 'gather' -> 'explode' -> 'done'
+      startTime: 0,
+      gatherDuration: 2000, // 集まる時間（ミリ秒）
+      explodeDuration: 1000, // 弾ける時間（ミリ秒）
+      centerX: 0,
+      centerY: 0,
+    };
+
     // 設定
     this.sceneId = 1; // デフォルトシーン
     this.deviceKey = "display_dev_key_12345";
@@ -308,6 +319,12 @@ class DisplaySystem {
     this.updateEntityCount();
 
     console.log(`📊 Total entities now: ${this.entities.size}`);
+
+    // 20個に達したらリセットアニメーション開始
+    if (this.entities.size >= 20 && !this.resetAnimation.isActive) {
+      console.log("🎆 20 entities reached! Starting reset animation...");
+      this.startResetAnimation();
+    }
   }
 
   loadEntityImage(entity) {
@@ -490,6 +507,111 @@ class DisplaySystem {
     console.log("Scene reset");
   }
 
+  // 20個リセットアニメーション開始
+  startResetAnimation() {
+    this.resetAnimation.isActive = true;
+    this.resetAnimation.phase = 'gather';
+    this.resetAnimation.startTime = Date.now();
+    this.resetAnimation.centerX = this.canvas.width / 2;
+    this.resetAnimation.centerY = this.canvas.height / 2;
+
+    console.log("🎆 Reset animation started - gathering to center");
+  }
+
+  // リセットアニメーション更新
+  updateResetAnimation() {
+    if (!this.resetAnimation.isActive) return;
+
+    const elapsed = Date.now() - this.resetAnimation.startTime;
+    const phase = this.resetAnimation.phase;
+
+    if (phase === 'gather') {
+      // 中央に集める
+      const progress = Math.min(elapsed / this.resetAnimation.gatherDuration, 1);
+      const easing = 1 - Math.pow(1 - progress, 3); // イージング
+
+      this.entities.forEach(entity => {
+        const targetX = this.resetAnimation.centerX;
+        const targetY = this.resetAnimation.centerY;
+
+        // 初期位置を保存（初回のみ）
+        if (!entity.resetInitX) {
+          entity.resetInitX = entity.x;
+          entity.resetInitY = entity.y;
+        }
+
+        // 中央へ移動
+        entity.x = entity.resetInitX + (targetX - entity.resetInitX) * easing;
+        entity.y = entity.resetInitY + (targetY - entity.resetInitY) * easing;
+        entity.vx = 0;
+        entity.vy = 0;
+
+        // 回転させる
+        entity.angle += 0.1;
+      });
+
+      // 集まり終わったら弾ける
+      if (progress >= 1) {
+        this.resetAnimation.phase = 'explode';
+        this.resetAnimation.startTime = Date.now();
+        console.log("💥 Exploding outward!");
+
+        // 円状に弾ける速度を設定
+        const entities = Array.from(this.entities.values());
+        entities.forEach((entity, index) => {
+          const angle = (Math.PI * 2 * index) / entities.length;
+          const speed = 15;
+          entity.vx = Math.cos(angle) * speed;
+          entity.vy = Math.sin(angle) * speed;
+        });
+      }
+    } else if (phase === 'explode') {
+      // 弾けて飛んでいく
+      const progress = Math.min(elapsed / this.resetAnimation.explodeDuration, 1);
+
+      // 速度を適用して位置を更新
+      this.entities.forEach(entity => {
+        entity.x += entity.vx;
+        entity.y += entity.vy;
+        entity.angle += 0.2;
+      });
+
+      if (progress >= 1) {
+        // アニメーション終了、全エンティティを削除
+        console.log("🗑️ Removing all entities...");
+        this.resetAnimation.phase = 'done';
+        this.resetAnimation.isActive = false;
+
+        // バックエンドに全削除リクエスト
+        this.deleteAllEntities();
+      }
+    }
+  }
+
+  // 全エンティティ削除をバックエンドにリクエスト
+  async deleteAllEntities() {
+    const entityIds = Array.from(this.entities.keys());
+
+    for (const entityId of entityIds) {
+      try {
+        // 削除リクエスト送信
+        const response = await fetch(`/api/scenes/${this.sceneId}/entities/${entityId}`, {
+          method: 'DELETE',
+        });
+
+        if (response.ok) {
+          console.log(`✅ Entity ${entityId} deleted`);
+        }
+      } catch (error) {
+        console.error(`❌ Failed to delete entity ${entityId}:`, error);
+      }
+    }
+
+    // ローカルでも削除
+    this.resetScene();
+    console.log("🎉 Reset complete!");
+  }
+
   updateViewport(viewport) {
     this.viewport = { ...this.viewport, ...viewport };
     this.canvas.width = this.viewport.width;
@@ -519,6 +641,9 @@ class DisplaySystem {
       this.updateEntities();
       this.render();
 
+      // リセットアニメーション更新
+      this.updateResetAnimation();
+
       requestAnimationFrame(animate);
     };
 
@@ -529,6 +654,11 @@ class DisplaySystem {
   updateEntities() {
     const now = Date.now();
     const deltaTime = 16; // 約60FPS想定
+
+    // リセットアニメーション中は通常の更新をスキップ
+    if (this.resetAnimation.isActive) {
+      return;
+    }
 
     // spin_fightエンティティのマッチングを一括処理（フレームごとに1回のみ）
     this.matchSpinFightEntities();
