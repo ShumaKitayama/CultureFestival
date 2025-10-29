@@ -88,10 +88,24 @@ class OpsSystem {
     container.innerHTML = this.artworks
       .map((artwork) => {
         const title = artwork.title || "無題";
+        const thumbUrl = artwork.thumb_path
+          ? `/download/${artwork.qr_token}?thumb=true`
+          : "";
         return `
           <div class="artwork-item" data-artwork-id="${artwork.id}">
-            <span class="artwork-name">${title}</span>
-            <span class="artwork-id">(ID: ${artwork.id})</span>
+            <div class="artwork-actions">
+              <button class="danger" onclick="event.stopPropagation(); opsSystem.deleteArtwork(${
+                artwork.id
+              })">
+                削除
+              </button>
+            </div>
+            <div class="artwork-info">
+              ${thumbUrl ? `<img src="${thumbUrl}" alt="${title}" />` : ""}
+              <h3>${title}</h3>
+              <p>ID: ${artwork.id}</p>
+              <p>QR Token: ${artwork.qr_token}</p>
+            </div>
           </div>
         `;
       })
@@ -245,6 +259,7 @@ class OpsSystem {
           `「${this.selectedArtwork.title || "無題"}」をシーンに追加しました`,
           "success"
         );
+        this.loadSystemStatus(); // システム状態を更新
       } else {
         throw new Error("Failed to add entity");
       }
@@ -280,6 +295,7 @@ class OpsSystem {
           }」のアニメーションを更新しました`,
           "success"
         );
+        this.loadSystemStatus(); // システム状態を更新
       } else {
         throw new Error("Failed to update entity");
       }
@@ -306,6 +322,7 @@ class OpsSystem {
           `「${this.selectedArtwork.title || "無題"}」をシーンから削除しました`,
           "success"
         );
+        this.loadSystemStatus(); // システム状態を更新
       } else {
         throw new Error("Failed to delete entity");
       }
@@ -378,6 +395,52 @@ class OpsSystem {
     }
   }
 
+  async deleteArtwork(artworkId) {
+    const artwork = this.artworks.find((a) => a.id === artworkId);
+    const title = artwork ? artwork.title || "無題" : "作品";
+
+    if (
+      !confirm(
+        `「${title}」を完全に削除しますか？\n\nこの操作は取り消せません。作品とシーンからも削除されます。`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/artworks/${artworkId}`, {
+        method: "DELETE",
+        headers: {
+          "X-API-Key": "ops_dev_key_12345",
+        },
+      });
+
+      if (response.ok) {
+        // 作品一覧から削除
+        this.artworks = this.artworks.filter((a) => a.id !== artworkId);
+
+        // 選択中の作品が削除された場合、選択を解除
+        if (this.selectedArtwork && this.selectedArtwork.id === artworkId) {
+          this.selectedArtwork = null;
+          document.getElementById("animation-settings").classList.add("hidden");
+          document.getElementById("selected-artwork-name").textContent = "-";
+        }
+
+        // 一覧を再描画
+        this.renderArtworksList();
+
+        this.showStatus(`「${title}」を削除しました`, "success");
+        this.loadSystemStatus(); // システム状態を更新
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to delete artwork");
+      }
+    } catch (error) {
+      console.error("Delete artwork failed:", error);
+      this.showStatus(`作品の削除に失敗しました: ${error.message}`, "error");
+    }
+  }
+
   showStatus(message, type) {
     const status = document.getElementById("status");
     status.textContent = message;
@@ -392,6 +455,7 @@ class OpsSystem {
 }
 
 // ページ読み込み時に初期化
+let opsSystem;
 document.addEventListener("DOMContentLoaded", () => {
-  new OpsSystem();
+  opsSystem = new OpsSystem();
 });

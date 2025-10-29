@@ -89,3 +89,8 @@ INSERT INTO api_keys (name, token, role) VALUES
 ('display_dev', 'display_dev_key_12345', 'display'),
 ('ops_dev', 'ops_dev_key_12345', 'ops')
 ON CONFLICT (token) DO NOTHING;
+
+-- デフォルトシーンを作成
+INSERT INTO scenes (id, name, width, height) VALUES 
+(1, 'メイン展示', 1920, 1080)
+ON CONFLICT (id) DO NOTHING;

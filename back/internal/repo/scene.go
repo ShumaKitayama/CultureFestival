@@ -87,6 +87,10 @@ func (r *SceneEntityRepository) Delete(id uint) error {
 	return r.db.Delete(&domain.SceneEntity{}, id).Error
 }
 
+func (r *SceneEntityRepository) DeleteByArtworkID(artworkID uint) error {
+	return r.db.Where("artwork_id = ?", artworkID).Delete(&domain.SceneEntity{}).Error
+}
+
 type DisplayNodeRepository struct {
 	db *gorm.DB
 }

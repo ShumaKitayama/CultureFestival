@@ -1,5 +1,8 @@
-const canvas = document.getElementById("mandala-canvas");
-const ctx = canvas.getContext("2d");
+const canvasWrapper = document.querySelector(".canvas-wrapper");
+const guideCanvas = document.getElementById("guide-canvas");
+const guideCtx = guideCanvas.getContext("2d");
+const drawCanvas = document.getElementById("mandala-canvas");
+const drawCtx = drawCanvas.getContext("2d");
 const colorPicker = document.getElementById("pen-color");
 const widthSlider = document.getElementById("pen-width");
 const clearButton = document.getElementById("clear-button");
@@ -29,6 +32,40 @@ let centerX, centerY;
 let history = [];
 let historyIndex = -1;
 
+function createExportCanvas() {
+  const exportCanvas = document.createElement("canvas");
+  exportCanvas.width = drawCanvas.width;
+  exportCanvas.height = drawCanvas.height;
+  const exportCtx = exportCanvas.getContext("2d");
+
+  // エクスポート用キャンバスを透明に初期化
+  exportCtx.clearRect(0, 0, exportCanvas.width, exportCanvas.height);
+
+  // 白い背景を描画（透過PNGとして保存するため）
+  exportCtx.fillStyle = "#ffffff";
+  exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+
+  // 描画レイヤーのみを描画（ガイドレイヤーは除外）
+  exportCtx.drawImage(drawCanvas, 0, 0);
+
+  return exportCanvas;
+}
+
+function createTransparentExportCanvas() {
+  const exportCanvas = document.createElement("canvas");
+  exportCanvas.width = drawCanvas.width;
+  exportCanvas.height = drawCanvas.height;
+  const exportCtx = exportCanvas.getContext("2d");
+
+  // エクスポート用キャンバスを透明に初期化
+  exportCtx.clearRect(0, 0, exportCanvas.width, exportCanvas.height);
+
+  // 描画レイヤーのみを描画（ガイドレイヤーは除外、背景は透明）
+  exportCtx.drawImage(drawCanvas, 0, 0);
+
+  return exportCanvas;
+}
+
 /**
  * 戻る/進むボタンの有効・無効を切り替える
  */
@@ -46,41 +83,91 @@ function addHistory() {
     history = history.slice(0, historyIndex + 1);
   }
   // ImageDataを履歴に追加
-  history.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+  history.push(drawCtx.getImageData(0, 0, drawCanvas.width, drawCanvas.height));
   historyIndex++;
   updateUndoRedoButtons();
 }
 
+function resetDrawingLayer() {
+  // 第二層（描画レイヤー）を透明にクリア
+  drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+}
+
+function initializeDrawingLayer() {
+  // 描画レイヤーを完全に透明に初期化
+  drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+
+  // 透過性を確実にするための設定
+  drawCtx.globalCompositeOperation = "source-over";
+  drawCtx.globalAlpha = 1.0;
+
+  // キャンバス要素自体の背景を透明に設定
+  drawCanvas.style.backgroundColor = "transparent";
+
+  // 描画レイヤーが完全に透明であることを確認
+  drawCtx.save();
+  drawCtx.globalCompositeOperation = "source-over";
+  drawCtx.globalAlpha = 1.0;
+  drawCtx.restore();
+}
+
 function setupCanvas(ratioKey) {
   const newSize = RATIOS[ratioKey];
-  canvas.width = newSize.width;
-  canvas.height = newSize.height;
-  canvas.style.aspectRatio = `${newSize.width} / ${newSize.height}`;
-  centerX = canvas.width / 2;
-  centerY = canvas.height / 2;
 
+  // 両方のキャンバスを同じサイズに設定
+  guideCanvas.width = newSize.width;
+  guideCanvas.height = newSize.height;
+  drawCanvas.width = newSize.width;
+  drawCanvas.height = newSize.height;
+
+  if (canvasWrapper) {
+    canvasWrapper.style.aspectRatio = `${newSize.width} / ${newSize.height}`;
+  }
+
+  centerX = drawCanvas.width / 2;
+  centerY = drawCanvas.height / 2;
+
+  // 第一層：ガイド線を描画（白い背景付き）
   drawGuidelines();
 
-  // 履歴をリセット
-  history = [ctx.getImageData(0, 0, canvas.width, canvas.height)];
+  // 第二層：描画レイヤーを完全に透明に初期化
+  initializeDrawingLayer();
+
+  // 履歴をリセット（第二層のみ）
+  history = [drawCtx.getImageData(0, 0, drawCanvas.width, drawCanvas.height)];
   historyIndex = 0;
   updateUndoRedoButtons();
 
+  // ボタンの状態を更新
   ratioButtons.forEach((btn) => btn.classList.remove("active"));
   document.getElementById(`ratio-${ratioKey}`).classList.add("active");
+
+  // 透過性の確認
+  console.log(
+    "キャンバス初期化完了 - 描画レイヤー透過性:",
+    drawCanvas.style.backgroundColor
+  );
 }
 
 function drawGuidelines() {
-  ctx.strokeStyle = "#e0e0e0";
-  ctx.lineWidth = 1;
-  ctx.setLineDash([5, 3]);
-  ctx.beginPath();
-  ctx.moveTo(centerX, 0);
-  ctx.lineTo(centerX, canvas.height);
-  ctx.moveTo(0, centerY);
-  ctx.lineTo(canvas.width, centerY);
-  ctx.stroke();
-  ctx.setLineDash([]);
+  // ガイドレイヤーをクリア
+  guideCtx.clearRect(0, 0, guideCanvas.width, guideCanvas.height);
+
+  // 白い背景を描画
+  guideCtx.fillStyle = "#ffffff";
+  guideCtx.fillRect(0, 0, guideCanvas.width, guideCanvas.height);
+
+  // ガイド線を描画
+  guideCtx.strokeStyle = "#e0e0e0";
+  guideCtx.lineWidth = 1;
+  guideCtx.setLineDash([5, 3]);
+  guideCtx.beginPath();
+  guideCtx.moveTo(centerX, 0);
+  guideCtx.lineTo(centerX, guideCanvas.height);
+  guideCtx.moveTo(0, centerY);
+  guideCtx.lineTo(guideCanvas.width, centerY);
+  guideCtx.stroke();
+  guideCtx.setLineDash([]);
 }
 
 function getSymmetricPoints(x, y) {
@@ -95,10 +182,10 @@ function getSymmetricPoints(x, y) {
 }
 
 function getCanvasCoordinates(e) {
-  const rect = canvas.getBoundingClientRect();
+  const rect = drawCanvas.getBoundingClientRect();
   const touch = e.touches ? e.touches[0] : e;
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
+  const scaleX = drawCanvas.width / rect.width;
+  const scaleY = drawCanvas.height / rect.height;
   const canvasX = (touch.clientX - rect.left) * scaleX;
   const canvasY = (touch.clientY - rect.top) * scaleY;
   return { x: canvasX, y: canvasY };
@@ -116,17 +203,24 @@ function draw(e) {
   const coords = getCanvasCoordinates(e);
   const currentPoints = getSymmetricPoints(coords.x, coords.y);
 
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-  ctx.strokeStyle = colorPicker.value;
-  ctx.lineWidth = widthSlider.value;
+  // 描画レイヤーの設定（透過性を維持）
+  drawCtx.save();
+  drawCtx.globalCompositeOperation = "source-over";
+  drawCtx.globalAlpha = 1.0;
+  drawCtx.lineCap = "round";
+  drawCtx.lineJoin = "round";
+  drawCtx.strokeStyle = colorPicker.value;
+  drawCtx.lineWidth = widthSlider.value;
 
+  // 描画処理（背景はクリアしない）
   for (let i = 0; i < 4; i++) {
-    ctx.beginPath();
-    ctx.moveTo(lastPoints[i].x, lastPoints[i].y);
-    ctx.lineTo(currentPoints[i].x, currentPoints[i].y);
-    ctx.stroke();
+    drawCtx.beginPath();
+    drawCtx.moveTo(lastPoints[i].x, lastPoints[i].y);
+    drawCtx.lineTo(currentPoints[i].x, currentPoints[i].y);
+    drawCtx.stroke();
   }
+
+  drawCtx.restore();
   lastPoints = currentPoints;
 }
 
@@ -137,13 +231,13 @@ function stopDrawing() {
 }
 
 // --- イベントリスナー ---
-canvas.addEventListener("mousedown", startDrawing);
-canvas.addEventListener("mousemove", draw);
-canvas.addEventListener("mouseup", stopDrawing);
-canvas.addEventListener("mouseout", stopDrawing);
-canvas.addEventListener("touchstart", startDrawing, { passive: false });
-canvas.addEventListener("touchmove", draw, { passive: false });
-canvas.addEventListener("touchend", stopDrawing);
+drawCanvas.addEventListener("mousedown", startDrawing);
+drawCanvas.addEventListener("mousemove", draw);
+drawCanvas.addEventListener("mouseup", stopDrawing);
+drawCanvas.addEventListener("mouseout", stopDrawing);
+drawCanvas.addEventListener("touchstart", startDrawing, { passive: false });
+drawCanvas.addEventListener("touchmove", draw, { passive: false });
+drawCanvas.addEventListener("touchend", stopDrawing);
 
 clearButton.addEventListener("click", () => {
   const currentRatio = document
@@ -153,20 +247,10 @@ clearButton.addEventListener("click", () => {
 });
 
 saveButton.addEventListener("click", () => {
-  // 履歴からガイド線がない最初の状態を取得
-  const initialImageData = history[0];
-  const tempCanvas = document.createElement("canvas");
-  tempCanvas.width = canvas.width;
-  tempCanvas.height = canvas.height;
-  const tempCtx = tempCanvas.getContext("2d");
-
-  // 一時キャンバスに最初の状態（ガイド線なし）を書き込む
-  tempCtx.putImageData(initialImageData, 0, 0);
-  // その上に現在の描画内容を重ねる
-  tempCtx.drawImage(canvas, 0, 0);
-
+  // 描画レイヤーのみを透過PNGとして保存
+  const exportCanvas = createTransparentExportCanvas();
   const link = document.createElement("a");
-  link.href = tempCanvas.toDataURL("image/png");
+  link.href = exportCanvas.toDataURL("image/png");
   link.download = "mandala-art.png";
   link.click();
 });
@@ -183,19 +267,10 @@ document.querySelector(".action-controls").appendChild(uploadButton);
 
 uploadButton.addEventListener("click", async () => {
   try {
-    // ガイド線なしの画像を生成
-    const initialImageData = history[0];
-    const tempCanvas = document.createElement("canvas");
-    tempCanvas.width = canvas.width;
-    tempCanvas.height = canvas.height;
-    const tempCtx = tempCanvas.getContext("2d");
-
-    tempCtx.putImageData(initialImageData, 0, 0);
-    tempCtx.drawImage(canvas, 0, 0);
-
-    // 画像をBlobに変換
+    // 描画レイヤーのみを透過PNGとしてアップロード（ガイドレイヤーは除外）
+    const exportCanvas = createTransparentExportCanvas();
     const blob = await new Promise((resolve) => {
-      tempCanvas.toBlob(resolve, "image/png");
+      exportCanvas.toBlob(resolve, "image/png");
     });
 
     // FormDataを作成
@@ -256,19 +331,45 @@ uiToggleBtn.addEventListener("click", () => {
 undoBtn.addEventListener("click", () => {
   if (historyIndex > 0) {
     historyIndex--;
-    ctx.putImageData(history[historyIndex], 0, 0);
+    drawCtx.putImageData(history[historyIndex], 0, 0);
     updateUndoRedoButtons();
   }
 });
 redoBtn.addEventListener("click", () => {
   if (historyIndex < history.length - 1) {
     historyIndex++;
-    ctx.putImageData(history[historyIndex], 0, 0);
+    drawCtx.putImageData(history[historyIndex], 0, 0);
     updateUndoRedoButtons();
   }
 });
 
+// デバッグ用：透過性の確認
+function debugTransparency() {
+  console.log("=== 透過性デバッグ情報 ===");
+  console.log("描画キャンバス背景色:", drawCanvas.style.backgroundColor);
+  console.log("ガイドキャンバス背景色:", guideCanvas.style.backgroundColor);
+  console.log("キャンバスラッパー背景色:", canvasWrapper.style.backgroundColor);
+
+  // 描画レイヤーの透過性をテスト
+  const testCanvas = document.createElement("canvas");
+  testCanvas.width = 100;
+  testCanvas.height = 100;
+  const testCtx = testCanvas.getContext("2d");
+  testCtx.clearRect(0, 0, 100, 100);
+  testCtx.fillStyle = "red";
+  testCtx.fillRect(10, 10, 20, 20);
+
+  const imageData = testCtx.getImageData(0, 0, 100, 100);
+  const hasTransparency = Array.from(imageData.data).some(
+    (value, index) => index % 4 === 3 && value < 255 // アルファチャンネルが255未満
+  );
+  console.log("透過性サポート:", hasTransparency);
+  console.log("=========================");
+}
+
 // --- 初期化 ---
 window.addEventListener("DOMContentLoaded", () => {
   setupCanvas("landscape");
+  // デバッグ情報を表示
+  setTimeout(debugTransparency, 1000);
 });

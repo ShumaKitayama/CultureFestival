@@ -105,6 +105,12 @@
         padding: 15px;
         background: white;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        position: relative;
+      }
+
+      .artwork-item.selected {
+        border-color: #007bff;
+        background-color: #f8f9fa;
       }
 
       .artwork-item img {
@@ -124,6 +130,24 @@
         margin: 5px 0;
         color: #666;
         font-size: 12px;
+      }
+
+      .artwork-actions {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        display: flex;
+        gap: 5px;
+      }
+
+      .artwork-actions button {
+        padding: 5px 10px;
+        font-size: 12px;
+        margin: 0;
+      }
+
+      .artwork-info {
+        margin-right: 60px;
       }
 
       .status {

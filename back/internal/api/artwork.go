@@ -197,12 +197,31 @@ func (h *ArtworkHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	if err := h.artworkRepo.Delete(uint(id)); err != nil {
+	artworkID := uint(id)
+
+	// 作品が存在するかチェック
+	_, err = h.artworkRepo.GetByID(artworkID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Artwork not found"})
+		return
+	}
+
+	// 関連するシーンエンティティを削除
+	if err := h.entityRepo.DeleteByArtworkID(artworkID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete related entities"})
+		return
+	}
+
+	// 作品を削除
+	if err := h.artworkRepo.Delete(artworkID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete artwork"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Artwork deleted successfully"})
+	// WebSocketでブロードキャスト（エンティティ削除を通知）
+	h.broadcastEntityDelete(artworkID)
+
+	c.JSON(http.StatusOK, gin.H{"message": "Artwork and related entities deleted successfully"})
 }
 
 func (h *ArtworkHandler) Download(c *gin.Context) {
@@ -244,6 +263,7 @@ func (h *ArtworkHandler) broadcastEntityAdd(entity *domain.SceneEntity, artwork 
 		Type: "entity.add",
 		Data: map[string]interface{}{
 			"entity_id": entity.ID,
+			"artwork_id": artwork.ID, // 作品IDを追加
 			"artwork_url": fmt.Sprintf("/download/%s", artwork.QRToken),
 			"init": map[string]interface{}{
 				"x": entity.InitX,
@@ -260,4 +280,17 @@ func (h *ArtworkHandler) broadcastEntityAdd(entity *domain.SceneEntity, artwork 
 
 	fmt.Printf("Broadcasting to room: %s\n", room)
 	h.hub.BroadcastToRoom(room, message)
+}
+
+func (h *ArtworkHandler) broadcastEntityDelete(artworkID uint) {
+	// 全シーンにエンティティ削除を通知
+	message := ws.Message{
+		Type: "entity.delete",
+		Data: map[string]interface{}{
+			"artwork_id": artworkID,
+		},
+	}
+
+	// 全シーンにブロードキャスト
+	h.hub.BroadcastToAll(message)
 }

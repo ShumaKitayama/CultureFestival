@@ -3,6 +3,7 @@ class DisplaySystem {
     this.canvas = document.getElementById("display-canvas");
     this.ctx = this.canvas.getContext("2d");
     this.entities = new Map();
+    this.particles = new Map(); // パーティクルシステム
     this.ws = null;
     this.isConnected = false;
     this.debugMode = false;
@@ -22,6 +23,118 @@ class DisplaySystem {
     };
 
     this.init();
+  }
+
+  // パーティクルクラス
+  createParticle(x, y, vx, vy, life, color, size) {
+    return {
+      x: x,
+      y: y,
+      vx: vx,
+      vy: vy,
+      life: life,
+      maxLife: life,
+      color: color,
+      size: size,
+      alpha: 1.0,
+    };
+  }
+
+  // パーティクルを追加
+  addParticles(entityId, count, type) {
+    const entity = this.entities.get(entityId);
+    if (!entity) return;
+
+    const particles = [];
+    for (let i = 0; i < count; i++) {
+      let vx, vy, life, color, size;
+
+      switch (type) {
+        case "disperse":
+          const angle = (Math.PI * 2 * i) / count;
+          const speed = 2 + Math.random() * 3;
+          vx = Math.cos(angle) * speed;
+          vy = Math.sin(angle) * speed;
+          life = 2000 + Math.random() * 1000;
+          color = `hsl(${Math.random() * 360}, 70%, 60%)`;
+          size = 2 + Math.random() * 4;
+          break;
+        case "explode":
+          const angle2 = Math.random() * Math.PI * 2;
+          const speed2 = 3 + Math.random() * 5;
+          vx = Math.cos(angle2) * speed2;
+          vy = Math.sin(angle2) * speed2;
+          life = 1000 + Math.random() * 500;
+          color = `hsl(${20 + Math.random() * 40}, 90%, 60%)`;
+          size = 3 + Math.random() * 6;
+          break;
+        default:
+          vx = (Math.random() - 0.5) * 2;
+          vy = (Math.random() - 0.5) * 2;
+          life = 1000;
+          color = "#ffffff";
+          size = 2;
+      }
+
+      particles.push(
+        this.createParticle(
+          entity.x + (Math.random() - 0.5) * entity.width * entity.scale,
+          entity.y + (Math.random() - 0.5) * entity.height * entity.scale,
+          vx,
+          vy,
+          life,
+          color,
+          size
+        )
+      );
+    }
+
+    this.particles.set(entityId, particles);
+  }
+
+  // パーティクルを更新
+  updateParticles(deltaTime) {
+    this.particles.forEach((particles, entityId) => {
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const particle = particles[i];
+
+        // 位置更新
+        particle.x += particle.vx * deltaTime;
+        particle.y += particle.vy * deltaTime;
+
+        // 寿命減少
+        particle.life -= deltaTime;
+        particle.alpha = particle.life / particle.maxLife;
+
+        // 重力効果
+        particle.vy += 0.1 * deltaTime;
+
+        // 寿命切れで削除
+        if (particle.life <= 0) {
+          particles.splice(i, 1);
+        }
+      }
+
+      // パーティクルがなくなったら削除
+      if (particles.length === 0) {
+        this.particles.delete(entityId);
+      }
+    });
+  }
+
+  // パーティクルを描画
+  renderParticles() {
+    this.particles.forEach((particles) => {
+      particles.forEach((particle) => {
+        this.ctx.save();
+        this.ctx.globalAlpha = particle.alpha;
+        this.ctx.fillStyle = particle.color;
+        this.ctx.beginPath();
+        this.ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.restore();
+      });
+    });
   }
 
   init() {
@@ -106,6 +219,9 @@ class DisplaySystem {
       case "entity.remove":
         this.removeEntity(message.data.entity_id);
         break;
+      case "entity.delete":
+        this.removeEntityByArtworkId(message.data.artwork_id);
+        break;
       case "scene.reset":
         this.resetScene();
         break;
@@ -121,6 +237,7 @@ class DisplaySystem {
   addEntity(data) {
     const entity = {
       id: data.entity_id,
+      artworkId: data.artwork_id, // 作品IDを追加
       artworkUrl: data.artwork_url,
       x: data.init.x,
       y: data.init.y,
@@ -128,20 +245,55 @@ class DisplaySystem {
       vy: data.init.vy,
       angle: data.init.angle,
       scale: data.init.scale,
+      initScale: data.init.scale,
       animationKind: data.animation_kind,
       seed: data.seed,
       element: null,
+      image: null,
+      width: 100,
+      height: 100,
       lastUpdate: Date.now(),
     };
 
-    // DOM要素を作成
-    entity.element = this.createEntityElement(entity);
-    document.body.appendChild(entity.element);
+    // 画像を読み込み
+    this.loadEntityImage(entity);
 
     this.entities.set(entity.id, entity);
     this.updateEntityCount();
 
     console.log("Entity added:", entity.id);
+  }
+
+  loadEntityImage(entity) {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+
+    img.onload = () => {
+      entity.image = img;
+      entity.width = img.width;
+      entity.height = img.height;
+      console.log("Image loaded for entity:", entity.id);
+    };
+
+    img.onerror = (e) => {
+      console.error("Failed to load image for entity:", entity.id, e);
+      // エラー時はプレースホルダー画像を作成
+      const canvas = document.createElement("canvas");
+      canvas.width = 100;
+      canvas.height = 100;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#666";
+      ctx.fillRect(0, 0, 100, 100);
+      ctx.fillStyle = "#fff";
+      ctx.font = "20px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText("?", 50, 50);
+      entity.image = canvas;
+      entity.width = 100;
+      entity.height = 100;
+    };
+
+    img.src = entity.artworkUrl;
   }
 
   loadExistingEntities() {
@@ -239,6 +391,23 @@ class DisplaySystem {
     console.log("Entity removed:", entityId);
   }
 
+  removeEntityByArtworkId(artworkId) {
+    // 作品IDに基づいてエンティティを削除
+    const entitiesToRemove = [];
+
+    this.entities.forEach((entity, entityId) => {
+      if (entity.artworkId === artworkId) {
+        entitiesToRemove.push(entityId);
+      }
+    });
+
+    entitiesToRemove.forEach((entityId) => {
+      this.removeEntity(entityId);
+    });
+
+    console.log("Entities removed by artwork ID:", artworkId);
+  }
+
   resetScene() {
     this.entities.forEach((entity) => {
       if (entity.element) {
@@ -302,6 +471,9 @@ class DisplaySystem {
         entity.element.style.transform = `rotate(${entity.angle}deg) scale(${entity.scale})`;
       }
     });
+
+    // パーティクルを更新
+    this.updateParticles(deltaTime);
   }
 
   updatePhysics(entity, deltaTime) {
@@ -338,27 +510,158 @@ class DisplaySystem {
 
   updateAnimation(entity, deltaTime) {
     const time = Date.now() * 0.001;
+    const entityId = entity.id;
+
+    // アニメーション状態を初期化（初回のみ）
+    if (!entity.animationState) {
+      entity.animationState = {
+        phase: 0,
+        lastParticleTime: 0,
+        fightTarget: null,
+        fightPhase: 0,
+        streamStartTime: time,
+      };
+    }
+
+    const state = entity.animationState;
 
     switch (entity.animationKind) {
       case "pulsate":
-        entity.scale = 1 + Math.sin(time * 2) * 0.2;
+        // より自然な脈動効果
+        const pulseIntensity = 0.3 + Math.sin(time * 1.5) * 0.2;
+        entity.scale = entity.initScale * (1 + pulseIntensity);
+
+        // 色の変化も追加
+        entity.tint = `hsl(${200 + Math.sin(time * 2) * 30}, 70%, 60%)`;
         break;
+
       case "disperse":
-        // パーティクル効果（簡易版）
-        entity.angle += deltaTime * 0.1;
+        // 定期的にパーティクルを生成
+        if (time - state.lastParticleTime > 0.1) {
+          this.addParticles(entityId, 3, "disperse");
+          state.lastParticleTime = time;
+        }
+
+        // 本体はゆっくり回転
+        entity.angle += deltaTime * 0.05;
+
+        // 軽やかな動き
+        entity.x += Math.sin(time * 0.5) * 0.5;
+        entity.y += Math.cos(time * 0.7) * 0.3;
         break;
+
       case "explode":
-        // 爆散効果（簡易版）
-        entity.scale = 1 + Math.sin(time * 5) * 0.3;
+        // 爆発パーティクルを生成
+        if (state.phase === 0) {
+          this.addParticles(entityId, 20, "explode");
+          state.phase = 1;
+          state.lastParticleTime = time;
+        }
+
+        // 爆発後の振動効果
+        if (state.phase === 1) {
+          const shakeIntensity = Math.max(
+            0,
+            1 - (time - state.lastParticleTime) * 0.001
+          );
+          entity.x += (Math.random() - 0.5) * shakeIntensity * 10;
+          entity.y += (Math.random() - 0.5) * shakeIntensity * 10;
+
+          if (time - state.lastParticleTime > 2) {
+            state.phase = 0; // リセット
+          }
+        }
+
+        // スケール変化
+        entity.scale = entity.initScale * (1 + Math.sin(time * 8) * 0.2);
         break;
+
       case "spin_fight":
-        // 高速回転
-        entity.angle += deltaTime * 0.5;
+        // ベイブレード的な戦闘システム
+        if (!state.fightTarget) {
+          // 戦闘相手を探す
+          this.entities.forEach((otherEntity, otherId) => {
+            if (
+              otherId !== entityId &&
+              otherEntity.animationKind === "spin_fight" &&
+              !otherEntity.animationState.fightTarget
+            ) {
+              const distance = Math.sqrt(
+                Math.pow(entity.x - otherEntity.x, 2) +
+                  Math.pow(entity.y - otherEntity.y, 2)
+              );
+
+              if (distance < 200) {
+                state.fightTarget = otherId;
+                otherEntity.animationState.fightTarget = entityId;
+              }
+            }
+          });
+        }
+
+        if (state.fightTarget) {
+          const target = this.entities.get(state.fightTarget);
+          if (target) {
+            // 相手に向かって移動
+            const dx = target.x - entity.x;
+            const dy = target.y - entity.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance > 50) {
+              entity.vx += (dx / distance) * 0.5;
+              entity.vy += (dy / distance) * 0.5;
+            }
+
+            // 高速回転
+            entity.angle += deltaTime * 2;
+
+            // 衝突判定
+            if (distance < 60) {
+              state.fightPhase = 1;
+              // 衝突時のパーティクル効果
+              if (time - state.lastParticleTime > 0.05) {
+                this.addParticles(entityId, 5, "explode");
+                state.lastParticleTime = time;
+              }
+            }
+          } else {
+            // 相手が消えた場合
+            state.fightTarget = null;
+          }
+        } else {
+          // 通常の高速回転
+          entity.angle += deltaTime * 1.5;
+        }
         break;
+
       case "stream_in":
-        // 画面端から流入（簡易版）
-        if (entity.x < 0) {
-          entity.x = this.viewport.width;
+        // 画面端からの流れ込み効果
+        const streamProgress = (time - state.streamStartTime) * 0.5;
+
+        if (state.phase === 0) {
+          // 画面外から開始
+          entity.x = -entity.width;
+          entity.y =
+            this.viewport.height * 0.3 + Math.sin(streamProgress) * 100;
+          state.phase = 1;
+        }
+
+        if (state.phase === 1) {
+          // 画面内に流れ込む
+          entity.x += deltaTime * 200;
+
+          // 波打つような動き
+          entity.y += Math.sin(streamProgress * 2) * 2;
+
+          // 画面内に入ったら通常状態に
+          if (entity.x > this.viewport.width * 0.1) {
+            state.phase = 2;
+          }
+        }
+
+        // 流れ込み時のスケール変化
+        if (state.phase < 2) {
+          entity.scale = entity.initScale * (0.5 + streamProgress * 0.5);
         }
         break;
     }
@@ -368,9 +671,52 @@ class DisplaySystem {
     // キャンバスをクリア
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
+    // エンティティを描画
+    this.entities.forEach((entity) => {
+      this.renderEntity(entity);
+    });
+
+    // パーティクルを描画
+    this.renderParticles();
+
     if (this.debugMode) {
       this.renderDebugInfo();
     }
+  }
+
+  renderEntity(entity) {
+    if (!entity.image) return;
+
+    this.ctx.save();
+
+    // 位置と回転、スケールを適用
+    this.ctx.translate(entity.x, entity.y);
+    this.ctx.rotate(entity.angle);
+    this.ctx.scale(entity.scale, entity.scale);
+
+    // 色の変化を適用（tintがある場合）
+    if (entity.tint) {
+      this.ctx.globalCompositeOperation = "multiply";
+      this.ctx.fillStyle = entity.tint;
+      this.ctx.fillRect(
+        -entity.width / 2,
+        -entity.height / 2,
+        entity.width,
+        entity.height
+      );
+      this.ctx.globalCompositeOperation = "source-over";
+    }
+
+    // 画像を描画
+    this.ctx.drawImage(
+      entity.image,
+      -entity.width / 2,
+      -entity.height / 2,
+      entity.width,
+      entity.height
+    );
+
+    this.ctx.restore();
   }
 
   renderDebugInfo() {

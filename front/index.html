@@ -1,38 +1,44 @@
 <!DOCTYPE html>
 <html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, user-scalable=no"
+    />
     <title>お絵かきアプリ</title>
-    <link rel="stylesheet" href="style.css">
-</head>
-<body>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
     <button id="ui-toggle-btn">🎨 UI</button>
     <h1>お絵かき</h1>
-    <canvas id="mandala-canvas"></canvas>
-    
+    <div class="canvas-wrapper">
+      <canvas id="guide-canvas" class="canvas-layer"></canvas>
+      <canvas id="mandala-canvas" class="canvas-layer"></canvas>
+    </div>
+
     <div class="controls">
-        <div class="control-group ratio-controls">
-            <button id="ratio-landscape">横長 (4:3)</button>
-            <button id="ratio-portrait">縦長 (3:4)</button>
-            <button id="ratio-square">正方形 (1:1)</button>
-        </div>
-        <div class="control-group">
-            <label for="pen-color">Color:</label>
-            <input type="color" id="pen-color" value="#000000">
-        </div>
-        <div class="control-group">
-            <label for="pen-width">Width:</label>
-            <input type="range" id="pen-width" min="1" max="50" value="5">
-        </div>
-        <div class="control-group action-controls">
-            <button id="undo-btn">戻る</button>
-            <button id="redo-btn">進む</button>
-            <button id="clear-button">Clear</button>
-            <button id="save-button">Save</button>
-        </div>
-        </div>
+      <div class="control-group ratio-controls">
+        <button id="ratio-landscape">横長 (4:3)</button>
+        <button id="ratio-portrait">縦長 (3:4)</button>
+        <button id="ratio-square">正方形 (1:1)</button>
+      </div>
+      <div class="control-group">
+        <label for="pen-color">Color:</label>
+        <input type="color" id="pen-color" value="#000000" />
+      </div>
+      <div class="control-group">
+        <label for="pen-width">Width:</label>
+        <input type="range" id="pen-width" min="1" max="50" value="5" />
+      </div>
+      <div class="control-group action-controls">
+        <button id="undo-btn">戻る</button>
+        <button id="redo-btn">進む</button>
+        <button id="clear-button">Clear</button>
+        <button id="save-button">Save</button>
+      </div>
+    </div>
 
     <script src="script.js"></script>
-</body>
+  </body>
 </html>

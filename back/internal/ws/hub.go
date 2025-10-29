@@ -126,3 +126,22 @@ func (h *Hub) MoveClientToRoom(client *Client, newRoom string) {
 	}
 	h.rooms[newRoom][client] = true
 }
+
+func (h *Hub) BroadcastToAll(message Message) {
+	data, err := json.Marshal(message)
+	if err != nil {
+		log.Printf("Error marshaling message: %v", err)
+		return
+	}
+
+	h.mu.RLock()
+	for client := range h.clients {
+		select {
+		case client.send <- data:
+		default:
+			close(client.send)
+			delete(h.clients, client)
+		}
+	}
+	h.mu.RUnlock()
+}
