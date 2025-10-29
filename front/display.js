@@ -19,8 +19,9 @@ class DisplaySystem {
     // 20個集合→弾けリセット機能
     this.resetAnimation = {
       isActive: false,
-      phase: 'gather', // 'gather' -> 'explode' -> 'done'
+      phase: 'wait', // 'wait' -> 'gather' -> 'explode' -> 'done'
       startTime: 0,
+      waitDuration: 10000, // 待機時間（ミリ秒）
       gatherDuration: 2000, // 集まる時間（ミリ秒）
       explodeDuration: 1000, // 弾ける時間（ミリ秒）
       centerX: 0,
@@ -510,12 +511,12 @@ class DisplaySystem {
   // 20個リセットアニメーション開始
   startResetAnimation() {
     this.resetAnimation.isActive = true;
-    this.resetAnimation.phase = 'gather';
+    this.resetAnimation.phase = 'wait';
     this.resetAnimation.startTime = Date.now();
     this.resetAnimation.centerX = this.canvas.width / 2;
     this.resetAnimation.centerY = this.canvas.height / 2;
 
-    console.log("🎆 Reset animation started - gathering to center");
+    console.log("⏳ Reset animation started - waiting 10 seconds before gathering...");
   }
 
   // リセットアニメーション更新
@@ -525,7 +526,23 @@ class DisplaySystem {
     const elapsed = Date.now() - this.resetAnimation.startTime;
     const phase = this.resetAnimation.phase;
 
-    if (phase === 'gather') {
+    if (phase === 'wait') {
+      // 10秒待機
+      const progress = elapsed / this.resetAnimation.waitDuration;
+
+      // 1秒ごとにカウントダウンログ
+      const secondsLeft = Math.ceil((this.resetAnimation.waitDuration - elapsed) / 1000);
+      if (!this.lastCountdownLog || this.lastCountdownLog !== secondsLeft) {
+        console.log(`⏰ Reset in ${secondsLeft} seconds...`);
+        this.lastCountdownLog = secondsLeft;
+      }
+
+      if (progress >= 1) {
+        this.resetAnimation.phase = 'gather';
+        this.resetAnimation.startTime = Date.now();
+        console.log("🎆 Starting gathering phase!");
+      }
+    } else if (phase === 'gather') {
       // 中央に集める
       const progress = Math.min(elapsed / this.resetAnimation.gatherDuration, 1);
       const easing = 1 - Math.pow(1 - progress, 3); // イージング
@@ -655,8 +672,8 @@ class DisplaySystem {
     const now = Date.now();
     const deltaTime = 16; // 約60FPS想定
 
-    // リセットアニメーション中は通常の更新をスキップ
-    if (this.resetAnimation.isActive) {
+    // リセットアニメーション中（wait以外）は通常の更新をスキップ
+    if (this.resetAnimation.isActive && this.resetAnimation.phase !== 'wait') {
       return;
     }
 
