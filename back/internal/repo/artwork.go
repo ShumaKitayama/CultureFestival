@@ -95,9 +95,13 @@ var animationKinds = []string{"pulsate", "disperse", "explode", "spin_fight", "s
 var animationIndex = 0
 
 func GetNextAnimationKind() string {
-	kind := animationKinds[animationIndex]
-	animationIndex = (animationIndex + 1) % len(animationKinds)
-	return kind
+	// デフォルトは常に回転戦闘
+	return "spin_fight"
+
+	// ラウンドロビンを使用する場合は以下をコメント解除
+	// kind := animationKinds[animationIndex]
+	// animationIndex = (animationIndex + 1) % len(animationKinds)
+	// return kind
 }
 
 func GetRandomRNGSeed() int64 {
