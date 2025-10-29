@@ -9,7 +9,7 @@ body {
   align-items: center;
   justify-content: flex-start;
   /* コントロールパネルが隠れないように、コンテンツ全体の底に余白を確保 */
-  padding-bottom: 220px;
+  padding-bottom: 100px;
   /* スムーズに変化させる */
   transition: padding-bottom 0.3s ease-in-out;
 }
@@ -26,29 +26,49 @@ h1 {
   border: 1px solid #ddd;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
   background-color: #ffffff;
-  width: 800px;
-  max-width: 95vw;
-  max-height: 70vh;
+  width: 900px;
+  max-width: 120vw;
+  max-height: 80vh;
   overflow: hidden;
   margin: 20px auto;
   /* 中央配置を確実にする */
   display: block;
-  /* アスペクト比を維持しながらサイズを調整 */
-  aspect-ratio: 4/3;
 }
 
 /* レスポンシブ対応 */
 @media (max-width: 900px) {
   .canvas-wrapper {
-    width: 90vw;
-    max-width: 90vw;
+    width: 85vw;
+    max-width: 85vw;
+  }
+
+  body {
+    padding-bottom: 120px;
   }
 }
 
 @media (max-width: 600px) {
   .canvas-wrapper {
-    width: 95vw;
-    max-width: 95vw;
+    width: 90vw;
+    max-width: 90vw;
+  }
+
+  body {
+    padding-bottom: 140px;
+  }
+
+  .controls {
+    padding: 8px;
+    gap: 8px;
+    flex-wrap: wrap;
+    max-height: none;
+    /* 小さい画面では高さ制限を解除 */
+  }
+
+  button,
+  input {
+    font-size: 13px;
+    padding: 5px 8px;
   }
 }
 
@@ -80,7 +100,8 @@ h1 {
   position: fixed;
   top: 15px;
   right: 15px;
-  z-index: 1000; /* 他の要素より手前に表示 */
+  z-index: 1000;
+  /* 他の要素より手前に表示 */
   padding: 8px 10px;
   background-color: rgba(255, 255, 255, 0.8);
   backdrop-filter: blur(5px);
@@ -98,31 +119,40 @@ h1 {
 
   /* スタイル */
   background-color: #ffffff;
-  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1); /* 上向きの影 */
-  border-radius: 20px 20px 0 0;
-  padding: 15px;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+  /* 上向きの影 */
+  border-radius: 12px 12px 0 0;
+  padding: 8px 15px;
   display: flex;
-  flex-direction: column; /* 全体を縦に並べる */
+  flex-direction: row;
+  /* 横一列に並べる */
   align-items: center;
+  justify-content: center;
   gap: 15px;
+  flex-wrap: wrap;
+  /* 小さい画面では折り返す */
   /* スムーズに変化させる */
   transition: transform 0.3s ease-in-out;
+  max-height: 70px;
+  /* 高さを制限 */
 }
 
 .control-group {
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
+  /* gapを少し小さく */
 }
 
 button,
 input {
-  font-size: 16px;
+  font-size: 14px;
+  /* フォントサイズを小さく */
   border-radius: 6px;
   border: 1px solid #ccc;
-  padding: 8px 12px;
+  padding: 6px 10px;
+  /* パディングを小さく */
 }
 
 button {
@@ -137,13 +167,15 @@ button:hover {
 }
 
 input[type="color"] {
-  width: 50px;
-  height: 40px;
+  width: 40px;
+  height: 35px;
   padding: 2px;
+  cursor: pointer;
 }
 
 input[type="range"] {
-  max-width: 200px;
+  max-width: 120px;
+  /* 幅を小さく */
 }
 
 .ratio-controls {
@@ -169,16 +201,21 @@ input[type="range"] {
 
 /* UIを隠すためのスタイル */
 .controls.hidden {
-  transform: translateY(100%); /* 画面下にスライドアウト */
+  transform: translateY(100%);
+  /* 画面下にスライドアウト */
 }
 
 body.ui-hidden {
-  padding-bottom: 20px; /* UIが隠れた時の下の余白 */
+  padding-bottom: 20px;
+  /* UIが隠れた時の下の余白 */
 }
+
 .action-controls {
   display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: 8px;
+  /* gapを小さく */
+  flex-wrap: nowrap;
+  /* 折り返さない */
   justify-content: center;
 }
 
@@ -187,11 +224,13 @@ button:disabled {
   background-color: #cccccc;
   border-color: #bbbbbb;
   color: #666666;
-  cursor: not-allowed; /* 操作不可カーソル */
+  cursor: not-allowed;
+  /* 操作不可カーソル */
 }
 
 button:disabled:hover {
-  background-color: #cccccc; /* ホバーしても色が変わらないように */
+  background-color: #cccccc;
+  /* ホバーしても色が変わらないように */
 }
 
 /* 作品一覧スタイル */
