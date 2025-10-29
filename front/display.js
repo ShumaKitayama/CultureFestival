@@ -590,10 +590,15 @@ class DisplaySystem {
 
     if (spinFightEntities.length === 0) return;
 
-    console.log(`🎯 matchSpinFightEntities: Found ${spinFightEntities.length} spin_fight entities`);
-    spinFightEntities.forEach(({ id, entity }) => {
-      console.log(`  - Entity ${id}: hasAnimationState=${!!entity.animationState}, position=(${Math.round(entity.x)}, ${Math.round(entity.y)})`);
-    });
+    // ログは10秒に1回だけ
+    const now = Date.now();
+    if (!this.lastMatchLog || now - this.lastMatchLog > 10000) {
+      console.log(`🎯 matchSpinFightEntities: Found ${spinFightEntities.length} spin_fight entities`);
+      spinFightEntities.forEach(({ id, entity }) => {
+        console.log(`  - Entity ${id}: hasAnimationState=${!!entity.animationState}, position=(${Math.round(entity.x)}, ${Math.round(entity.y)})`);
+      });
+      this.lastMatchLog = now;
+    }
 
     // マッチング処理
     for (let i = 0; i < spinFightEntities.length; i++) {
@@ -760,23 +765,76 @@ class DisplaySystem {
             const dy = target.y - entity.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
 
-            if (distance > 50) {
+            // 衝突判定と反発処理
+            const collisionDistance = 60;
+
+            if (distance < collisionDistance) {
+              // 衝突発生！
+              state.fightPhase = 1;
+
+              // 衝突時のパーティクル効果
+              if (time - state.lastParticleTime > 0.05) {
+                this.addParticles(entityId, 10, "explode");
+                state.lastParticleTime = time;
+              }
+
+              // === 物理的な反発処理 ===
+              // 衝突の法線ベクトル（自分から相手への方向を反転 = 相手から自分への方向）
+              const nx = -dx / distance;
+              const ny = -dy / distance;
+
+              // 相対速度
+              const dvx = entity.vx - target.vx;
+              const dvy = entity.vy - target.vy;
+
+              // 法線方向の相対速度（接近している場合は負の値）
+              const dvn = dvx * nx + dvy * ny;
+
+              // デバッグログ（0.5秒に1回）
+              if (!state.lastCollisionLog || time - state.lastCollisionLog > 0.5) {
+                console.log(`💥 Collision! Entity ${entityId} ↔ ${state.fightTarget}: distance=${distance.toFixed(1)}, dvn=${dvn.toFixed(2)}`);
+                state.lastCollisionLog = time;
+              }
+
+              // 接近している場合のみ反発（dvn < 0 なら接近中）
+              if (dvn < 0) {
+                // 反発係数（1.5で強力な反発）
+                const restitution = 1.5;
+
+                // 衝突による速度変化量
+                const impulseMagnitude = -(1 + restitution) * dvn / 2;
+
+                // デバッグログ（反発実行時）
+                if (!state.lastImpulseLog || time - state.lastImpulseLog > 0.5) {
+                  console.log(`  ⚡ Applying impulse: ${impulseMagnitude.toFixed(2)}, entity.v=(${entity.vx.toFixed(1)}, ${entity.vy.toFixed(1)}) → target.v=(${target.vx.toFixed(1)}, ${target.vy.toFixed(1)})`);
+                  state.lastImpulseLog = time;
+                }
+
+                // 速度を更新（自分は反発方向へ）
+                entity.vx += impulseMagnitude * nx;
+                entity.vy += impulseMagnitude * ny;
+                target.vx -= impulseMagnitude * nx;
+                target.vy -= impulseMagnitude * ny;
+
+                // 重なりを解消（めり込み防止）
+                const overlap = collisionDistance - distance;
+                if (overlap > 0) {
+                  const separationX = nx * overlap * 0.5;
+                  const separationY = ny * overlap * 0.5;
+                  entity.x += separationX;
+                  entity.y += separationY;
+                  target.x -= separationX;
+                  target.y -= separationY;
+                }
+              }
+            } else if (distance > 50 && distance < 300) {
+              // 一定距離内なら引き寄せる
               entity.vx += (dx / distance) * 0.5;
               entity.vy += (dy / distance) * 0.5;
             }
 
             // 高速回転
             entity.angle += deltaTime * 2;
-
-            // 衝突判定
-            if (distance < 60) {
-              state.fightPhase = 1;
-              // 衝突時のパーティクル効果
-              if (time - state.lastParticleTime > 0.05) {
-                this.addParticles(entityId, 5, "explode");
-                state.lastParticleTime = time;
-              }
-            }
           } else {
             // 相手が消えた場合
             state.fightTarget = null;
