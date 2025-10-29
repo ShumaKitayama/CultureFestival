@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>Display Test - No Cache</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #fff;
+            font-family: monospace;
+        }
+
+        #info {
+            background: #2a2a2a;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .success {
+            color: #4caf50;
+        }
+
+        .error {
+            color: #f44336;
+        }
+
+        .warning {
+            color: #ff9800;
+        }
+
+        pre {
+            background: #000;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="info">
+        <h1>🔍 Display System テスト (キャッシュ無効版)</h1>
+        <p id="status">読み込み中...</p>
+        <p>時刻: <span id="timestamp"></span></p>
+    </div>
+
+    <div id="info">
+        <h2>チェックリスト:</h2>
+        <div id="checklist">
+            <p id="check-version">⏳ バージョンログ確認中...</p>
+            <p id="check-class">⏳ DisplaySystem クラス確認中...</p>
+            <p id="check-method">⏳ matchSpinFightEntities メソッド確認中...</p>
+        </div>
+    </div>
+
+    <div id="info">
+        <h2>コンソールログ:</h2>
+        <pre id="console-output">コンソールを開いてください (Cmd+Option+J)</pre>
+    </div>
+
+    <script>
+        // 現在時刻を表示
+        document.getElementById('timestamp').textContent = new Date().toLocaleString('ja-JP');
+
+        console.log("==========================================");
+        console.log("🧪 DISPLAY SYSTEM TEST - NO CACHE");
+        console.log("==========================================");
+        console.log("時刻:", new Date().toISOString());
+        console.log("URL:", window.location.href);
+        console.log("==========================================");
+    </script>
+
+    <!-- 完全に新しいタイムスタンプでdisplay.jsを読み込み -->
+    <script>
+        const timestamp = Date.now();
+        const script = document.createElement('script');
+        script.src = `display.js?v=${timestamp}`;
+        script.onload = function () {
+            console.log("✅ display.js loaded successfully");
+
+            // バージョンチェック
+            setTimeout(() => {
+                const checkVersion = document.getElementById('check-version');
+                const checkClass = document.getElementById('check-class');
+                const checkMethod = document.getElementById('check-method');
+
+                // DisplaySystemクラスの存在確認
+                if (typeof DisplaySystem !== 'undefined') {
+                    checkClass.innerHTML = '✅ <span class="success">DisplaySystem クラスが見つかりました</span>';
+
+                    // matchSpinFightEntitiesメソッドの存在確認
+                    const hasMethod = DisplaySystem.prototype.matchSpinFightEntities !== undefined;
+                    if (hasMethod) {
+                        checkMethod.innerHTML = '✅ <span class="success">matchSpinFightEntities メソッドが存在します (新しいコード)</span>';
+                    } else {
+                        checkMethod.innerHTML = '❌ <span class="error">matchSpinFightEntities メソッドが見つかりません (古いコード)</span>';
+                    }
+
+                    // バージョンログの確認を促す
+                    checkVersion.innerHTML = '⚠️ <span class="warning">コンソールで「📦 DisplaySystem v2.0 loaded」が表示されているか確認してください</span>';
+
+                    document.getElementById('status').innerHTML = '<span class="success">✅ ファイルは読み込まれました。コンソールでバージョンを確認してください。</span>';
+                } else {
+                    checkClass.innerHTML = '❌ <span class="error">DisplaySystem クラスが見つかりません</span>';
+                    document.getElementById('status').innerHTML = '<span class="error">❌ display.js が正しく読み込まれていません</span>';
+                }
+            }, 100);
+        };
+        script.onerror = function () {
+            console.error("❌ Failed to load display.js");
+            document.getElementById('status').innerHTML = '<span class="error">❌ display.js の読み込みに失敗しました</span>';
+        };
+        document.head.appendChild(script);
+    </script>
+</body>
+
+</html>

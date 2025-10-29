@@ -2,7 +2,7 @@
 
 ## 1. 背景
 
-展示会向けシステム。参加者が Web 上で絵を描きアップロードすると、共通画面上の「茎＋蕾」構造の中の空いている蕾にランダムでその絵が割り当てられ“花”として表示される。また描いたユーザーは QR コードを読み取って自分の絵を保存できる。
+展示会向けシステム。参加者が Web 上で絵を描きアップロードすると、共通画面上の空間にその絵が表示される。その絵は画面上を浮遊するかのようにふわふわしながら移動し、画面端を壁として跳ね返る。また、さまざまなアニメーションを持つ。
 
 ## 2. 機能要件
 
@@ -10,16 +10,13 @@
 
 - ユーザーが Web ブラウザ上で絵を描く（既実装）
 - 描いた絵を「アップロード」ボタンでサーバに送信
-- アップロード完了後、ユーザーに QR コードを提示
-- 別の端末でその QR コードを読み取ることで、自分の描いた絵をダウンロード可能
 
 ### 2.2 共通画面側機能（展示用）
 
-- 初期表示として、あらかじめ配置された茎＋蕾ユニット（例： grid 構造）を描画
-- ユーザーが絵をアップロードすると、空いている蕾ユニットから **ランダムに** 1 つを選び、そこに「花（ユーザー絵）」を割り当てる
-- 割り当てられた蕾ユニットは蕾表示から花表示に切り替わる（アニメーション可）
-- 全蕾ユニットが花で埋まった場合、次の処理（例：新スロット追加／アーカイブ）に移行
-- リアルタイムに新しい花の追加を反映（WebSocket 等）
+- 空間に自由に絵が浮遊する。
+- ブラウザの画面端を壁として跳ね返る動作をする。
+- ５種類のアニメーションを持つ(大きくなったり小さくなったり,絵が散る,爆散,絵同士が高速回転して衝突しベイブレードみたいに戦う,画面端から流れてくる)
+- アニメーションは一つの絵に対して 1 つで、前提として全ての絵はふわふわと移動しつつ、それとは別に上記アニメーションを一つ保有している。なお、ベイブレードは対となるペアが必要。
 
 ## 3. 非機能要件
 
@@ -36,170 +33,225 @@
 - 展示会場ネットワークが不安定な可能性あり → オフラインもしくはローカル中心構成を想定
 - 長期的なデータ保存・冗長化は必須ではない
 
-## 5. システム設計
+設計方針（要点）
+• 絵＝ Artwork、バイナリ＝ Asset で汎化
+• 表示は Scene に配置された Entity として管理（物理・アニメの状態は揮発）
+• 揮発状態は Redis、永続は MySQL ＋ローカル FS
+• 複数ディスプレイは DisplayNode として Scene にアタッチ（座標と拡大率で壁面合成）
+• 配信は WebSocket。アップロード → サーバ → 全 DisplayNode へ event broadcast
+• 物理演算はクライアント側（各 DisplayNode）で tick。サーバは乱数シードと初期値のみ配布
+• オフライン優先。ngrok は任意
 
-### 5.1 アーキテクチャ概要
+アーキテクチャ
+• フロント
+• upload-app: 描画 → アップロード
+• display-app: Scene クライアント（壁面合成可）
+• ops-app: 簡易運用 UI（シーン切替、強制リセット、ミュートなど）
+• バックエンド（Go/Gin）
+• REST API（Artwork 登録、ダウンロード、Scene/Display 設定）
+• WebSocket（rooms=scene_id）
+• 画像保存: ローカル FS（/data/assets）。任意で S3 互換切替可能
+• ストレージ
+• MySQL: メタ
+• Redis: 揮発（entity_state、rooms、pub/sub）
+• 展示運用
+• N 台の DisplayNode を scened room に参加。各自 viewport を持ち、壁面でタイル合成
 
-- **フロントエンド**
-  - 描画＋アップロードページ（既実装＋拡張）
-  - 共通表示ページ（展示用）
-- **バックエンド**
-  - API サーバ（Go 言語）
-  - WebSocket サービス
-- **ストレージ**
-  - リレーショナル DB（PostgreSQL）にメタデータ保存
-  - ローカルファイルシステムに画像保存
-- **配信／展示環境**
-  - 会場 PC が展示用ブラウザを表示
-  - 外部アクセスは ngrok 経由で可能
-
-### 5.2 ディレクトリ構成（例）
+ディレクトリ構成
 
 /project-root
 /backend
-main.go
-/api
-/model
-/storage
-/ws
+/cmd/server/main.go
+/internal/api # REST/WS ハンドラ
+/internal/app # usecase/service
+/internal/domain # entities（Artwork, Scene, Display...）
+/internal/repo # MySQL/Redis 実装
+/internal/storage # asset FS/S3 adapter
+/internal/ws # hub, rooms, auth
+/migrations # SQL
+/config # env, defaults
 /frontend
 /upload-app
 /display-app
-/common
-/utils
+/ops-app
+/common # 型定義・WS proto・util
+/deploy
 docker-compose.yml
-.env
+.env.example
+/data
+/assets # 画像バイナリ
 
-### 5.3 データモデル（ER 概要）
+データモデル（ER 概要）
+• users 任意
+• assets 絵のバイナリと形式（png/jpg/webp/gif/svg）
+• artworks メタ（作者、タイトル、タグ、サムネ、参照する asset_id）
+• scenes 論理的な展示空間
+• scene_entities Scene に配置される Artwork のインスタンス（初期位置・初期速度・アニメ種）
+• display_nodes 物理ディスプレイ。解像度、座標、拡大率
+• api_keys 簡易認証
+• 揮発: entity_state:{scene_id}（Redis，位置・速度・回転・スケール）
 
-- `flower_slots`（蕾ユニット）
-  - slot_id, grid_x, grid_y, is_used, created_at, used_at
-- `flowers`（実際の花／ユーザー絵）
-  - id, slot_id (FK), user_id, image_path, upload_time, qr_token
-- `users`（任意）
-  - id, name, created_at
+アニメーション仕様
+• 共通: ふわふわ移動＋壁反射。乱数漂流（Perlin 風）で微変動
+• 追加アニメ種類（1 枚に 1 種） 1. pulsate: 拡大縮小 2. disperse: パーティクルに分解 → 再結合 3. explode: 爆散 → 消滅 or 再生 4. spin-fight: 近傍ペアを組み、角速度付与 → 衝突反発 5. stream-in: 画面端から流入
+• 付与方法: scene_entities.animation_kind に列挙値
 
-### 5.4 API 仕様
+WebSocket イベント設計
+• room: scene:{scene_id}
+• メッセージ（JSON 型）
+• server->client
+• entity.add {entity_id, artwork_url, init: {x,y,vx,vy,angle,scale}, animation_kind, seed}
+• entity.remove {entity_id, reason}
+• scene.reset {hard:bool}
+• display.config {viewport:{x,y,width,height,scale}}
+• clock.sync {t0, tick_ms}
+• client->server
+• display.hello {display_key, scene_id, caps:{w,h,px_ratio}}
+• state.report {entity_id, x,y,vx,vy,angle,scale,ts} ※任意（観測ベース）
+• tick は各 DisplayNode がローカルで実行。clock.sync でドリフト抑制
 
-| エンドポイント      | メソッド  | 機能概要                                                                                                                 |
-| ------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `/api/upload`       | POST      | ユーザー絵をアップロード。空き slot をランダムに選び割り当て。レスポンスに slot_id, grid_x, grid_y, qr_code_url を返す。 |
-| `/download/{token}` | GET       | QR トークンに紐づく絵をダウンロード。                                                                                    |
-| `/api/slots`        | GET       | 全 slot（蕾ユニット）の状態（grid_x, grid_y, is_used）を返す。初期表示用。                                               |
-| `/ws`               | WebSocket | 新しい花追加イベントを全クライアントに送信。                                                                             |
+API 仕様
 
-### 5.5 共通画面 UI 設計
+エンドポイント メソッド 説明
+/api/artworks POST 画像アップロード＋ Artwork 登録。戻り: artwork_id, asset_url, thumb_url
+/api/artworks/{id} GET メタ取得
+/download/{token} GET QR トークンで原本ダウンロード
+/api/scenes POST/GET シーン作成/一覧
+/api/scenes/{id}/entities POST Scene に Artwork を実体化。初期座標/速度/アニメを指定
+/api/scenes/{id}/reset POST シーン初期化（揮発状態を Redis から削除）
+/api/displays POST/GET DisplayNode の登録/一覧（座標・倍率・解像度）
+/ws WS display.hello で参加（API Key 必須）
 
-- グリッド（例：5 列 ×4 行＝ 20 ユニット）を画面中央に描画
-- 各ユニットは茎＋蕾の表示（初期）
-- 新花追加時、対象ユニットにて蕾 ➝ 花切り替えアニメーション（例フェードイン）
-- 花にはユーザー絵の画像反映
-- 枠が埋まったら「満席」表示または次ページ遷移
+制限
+• 最大画像 1024px, 1–3MB。サーバで webp 変換（透過保持時は png）
 
-### 5.6 動作フロー（アップロードから表示まで）
+動作フロー 1. ユーザーが upload-app で作画 →/api/artworks へ送信 2. サーバが Asset 保存 →Artwork 登録 →QR トークン発行 → 返却 3. 運用 UI または自動ルールで Scene に scene_entities 追加 4. サーバが entity.add を Scene room へ broadcast 5. 各 DisplayNode が受信 → 初期状態確定 → ローカル tick 開始 6. 以降は WS 不安定でもローカル継続。再接続時に差分 sync
 
-1. ユーザーが描画完了 → アップロードボタン押下
-2. フロントが `/api/upload` に画像＋ユーザー ID 等送信
-3. サーバが `flower_slots` から `is_used=false` の行をランダム取得 → `is_used=true` に更新
-4. `flowers` テーブルに新レコード挿入（slot_id 付き）
-5. サーバが QR トークン生成 → `qr_code_url` をレスポンスで返却
-6. フロント表示：QR コード提示
-7. サーバが WebSocket 経由で全クライアントに `{type:"new_flower", slot_id, image_url, grid_x, grid_y}` イベント送信
-8. 展示用クライアントがイベント受信 → UI 更新（蕾 ➝ 花）
-9. 別端末でユーザーが QR コードを読み取る → `/download/{token}` へアクセス → 画像ダウンロード可能
+運用・ディスプレイ構成
+• 単一大画面: DisplayNode=1、viewport=全域
+• 壁面合成: 例 2×2 の 4 台
+• display_nodes(x,y,width,height,scale) を設定
+• 各 Node は同 Scene に参加。自分の viewport 内のみ描画
+• ベイブレード対: spin-fight は近傍探索（grid hash）でペア選定。孤立時は待機
 
-### 5.7 技術的注意点・リスク対策
+セキュリティと可用性
+• API Key（api_keys）で ops と display を制限
+• upload は origin 制限＋サイズ制限＋簡易レート
+• ngrok 用に署名付き health を用意
+• Redis ダウン時は新規追加不可だが既存は描画継続（クライアント自律）
 
-- 同時アップロード時の競合防止：DB トランザクション／ロックを活用
-- 画像サイズ制限（例：5 MB／幅 1024px など）にて負荷軽減
-- ネットワーク不安定対策：ローカルで動作可能な構成＋事前テスト
-- QR コード読み取り障害対応：URL リンク併設
-- 蕾枠が枯渇時の運用：あらかじめ十分枠準備／枠追加／古い花のアーカイブ化
+MySQL DDL（完全版）
 
-## 6. 運用手順（展示会場準備）
+CREATE DATABASE IF NOT EXISTS exhibit
+CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+USE exhibit;
 
-- 会場 PC に環境（Go/React/postgresqlL）をセットアップ
-- `.env` に必要変数（DB_URL, NGROK_TOKEN 等）を設定
-- サーバ起動 → `ngrok http <backend_port>` で外部アクセス確保
-- 描画用 URL（液タブ用） ／展示用 URL（プロジェクタ用）を準備
-- 当日運用：ユーザー描画 → アップロード → QR 取得／読み取り → 展示画面反映
-- 事前負荷テスト／画像読み込み速度確認
-
----
-
-# DB スキーマ（完全版 DDL）
-
-```sql
--- ======================================
--- データベース作成（未作成の場合）
--- ======================================
-CREATE DATABASE IF NOT EXISTS flower_exhibit
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_general_ci;
-USE flower_exhibit;
-
--- ======================================
--- テーブル: users（任意：ユーザー管理用）
--- ======================================
 CREATE TABLE users (
-  id BIGINT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(100) NOT NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB
-  DEFAULT CHARSET=utf8mb4
-  COLLATE=utf8mb4_general_ci;
+id BIGINT AUTO_INCREMENT PRIMARY KEY,
+name VARCHAR(100) NOT NULL,
+created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
 
--- ======================================
--- テーブル: flower_slots（蕾ユニット：茎＋蕾部分）
--- ======================================
-CREATE TABLE flower_slots (
-  slot_id INT AUTO_INCREMENT PRIMARY KEY,
-  grid_x INT NOT NULL,
-  grid_y INT NOT NULL,
-  is_used TINYINT(1) NOT NULL DEFAULT 0,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  used_at DATETIME NULL,
-  UNIQUE KEY ux_flower_slots_grid (grid_x, grid_y)
-) ENGINE=InnoDB
-  DEFAULT CHARSET=utf8mb4
-  COLLATE=utf8mb4_general_ci;
+CREATE TABLE api_keys (
+id BIGINT AUTO_INCREMENT PRIMARY KEY,
+name VARCHAR(100) NOT NULL,
+token CHAR(40) NOT NULL UNIQUE,
+role ENUM('upload','display','ops') NOT NULL,
+created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
 
--- ======================================
--- テーブル: flowers（ユーザーからアップロードされた「花」）
--- ======================================
-CREATE TABLE flowers (
-  id BIGINT AUTO_INCREMENT PRIMARY KEY,
-  slot_id INT NOT NULL,
-  user_id BIGINT NULL,
-  image_path VARCHAR(256) NOT NULL,
-  upload_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  qr_token VARCHAR(64) NOT NULL UNIQUE,
-  FOREIGN KEY (slot_id) REFERENCES flower_slots(slot_id),
-  FOREIGN KEY (user_id) REFERENCES users(id)
-) ENGINE=InnoDB
-  DEFAULT CHARSET=utf8mb4
-  COLLATE=utf8mb4_general_ci;
+CREATE TABLE assets (
+id BIGINT AUTO_INCREMENT PRIMARY KEY,
+path VARCHAR(255) NOT NULL, -- /data/assets/yyy/mm/dd/uuid.webp
+mime VARCHAR(64) NOT NULL, -- image/webp, image/png, image/svg+xml など
+width INT NOT NULL,
+height INT NOT NULL,
+bytes INT NOT NULL,
+sha256 CHAR(64) NOT NULL,
+created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+UNIQUE KEY ux_assets_sha256 (sha256)
+) ENGINE=InnoDB;
 
--- ======================================
--- インデックス追加（パフォーマンス配慮）
--- ======================================
--- slot_id による検索が多くなる想定のため
-CREATE INDEX idx_flowers_slot_id ON flowers(slot_id);
+CREATE TABLE artworks (
+id BIGINT AUTO_INCREMENT PRIMARY KEY,
+asset_id BIGINT NOT NULL,
+user_id BIGINT NULL,
+title VARCHAR(120) NULL,
+tags JSON NULL,
+qr_token CHAR(48) NOT NULL UNIQUE,
+thumb_path VARCHAR(255) NOT NULL, -- 低解像度 or webp サムネ
+created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+FOREIGN KEY (asset_id) REFERENCES assets(id),
+FOREIGN KEY (user_id) REFERENCES users(id)
+) ENGINE=InnoDB;
 
--- ======================================
--- 初期データ投入：flower_slots にあらかじめ配置する蕾ユニット
--- 例：5列 × 4行（計20スロット）
--- ======================================
-INSERT INTO flower_slots (grid_x, grid_y)
-VALUES
-  (1,1),(2,1),(3,1),(4,1),(5,1),
-  (1,2),(2,2),(3,2),(4,2),(5,2),
-  (1,3),(2,3),(3,3),(4,3),(5,3),
-  (1,4),(2,4),(3,4),(4,4),(5,4);
+CREATE TABLE scenes (
+id BIGINT AUTO_INCREMENT PRIMARY KEY,
+name VARCHAR(100) NOT NULL,
+width INT NOT NULL, -- 仮想空間の幅（px）
+height INT NOT NULL, -- 仮想空間の高さ（px）
+created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
 
--- ======================================
--- （必要に応じて）アクセス制御用ユーザ・権限設定など
--- ======================================
--- GRANT ALL ON flower_exhibit.* TO 'exhibit_user'@'%' IDENTIFIED BY 'secure_password';
--- FLUSH PRIVILEGES;
-```
+CREATE TABLE scene_entities (
+id BIGINT AUTO_INCREMENT PRIMARY KEY,
+scene_id BIGINT NOT NULL,
+artwork_id BIGINT NOT NULL,
+-- 初期状態（揮発の seed となる）
+init_x DOUBLE NOT NULL,
+init_y DOUBLE NOT NULL,
+init_vx DOUBLE NOT NULL,
+init_vy DOUBLE NOT NULL,
+init_angle DOUBLE NOT NULL DEFAULT 0,
+init_scale DOUBLE NOT NULL DEFAULT 1,
+animation_kind ENUM('pulsate','disperse','explode','spin_fight','stream_in') NOT NULL,
+rng_seed BIGINT NOT NULL,
+created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+FOREIGN KEY (scene_id) REFERENCES scenes(id),
+FOREIGN KEY (artwork_id) REFERENCES artworks(id),
+INDEX idx_scene_entities_scene (scene_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE display_nodes (
+id BIGINT AUTO_INCREMENT PRIMARY KEY,
+scene_id BIGINT NOT NULL,
+name VARCHAR(100) NOT NULL,
+-- 物理表示の論理ビューポート（仮想空間座標系）
+viewport_x INT NOT NULL,
+viewport_y INT NOT NULL,
+viewport_w INT NOT NULL,
+viewport_h INT NOT NULL,
+scale DOUBLE NOT NULL DEFAULT 1,
+-- 実ディスプレイ特性
+pixel_width INT NOT NULL,
+pixel_height INT NOT NULL,
+device_key CHAR(40) NOT NULL UNIQUE, -- DisplayNode 用 API Key と対応
+created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+FOREIGN KEY (scene_id) REFERENCES scenes(id)
+) ENGINE=InnoDB;
+
+-- 補助インデックス
+CREATE INDEX idx_artworks_asset ON artworks(asset_id);
+CREATE INDEX idx_display_nodes_scene ON display_nodes(scene_id);
+
+物理とアニメのロジック（クライアント）
+• tick Δt 固定（例 16.7ms）
+• 速度減衰少量、ノイズで揺らぎ
+• 壁衝突: 軸ごとに反転、係数 0.9
+• spin_fight: 空間をセル分割して近傍検索 → 最短距離のペアに角速度付与 → 反発
+• disperse/explode: パーティクルは CPU ベース簡易粒子。上限 N=200 程度で負荷制御
+
+運用手順（ローカル＋ ngrok 任意） 1. .env を複製して BACKEND_PORT=8080, MYSQL_DSN, REDIS_URL, ASSET_DIR=./data/assets を設定 2. docker-compose up -d（mysql, redis, backend, upload-app, display-app） 3. ops-app で Scene 作成（例 7680×2160） 4. 壁面枚数ぶん display-app を起動し、各ノードに device_key を設定 5. 必要なら ngrok http 8080。upload 側に外部 URL を配布 6. 当日: アップロード →scene_entities 自動追加（サーバのルールでアニメ種をラウンドロビン付与）→WS broadcast→ 表示
+
+画像最適化
+• 受信時に以下を適用
+• 最大辺 1024px に縮小
+• 透過あり: PNG、透過なし: WebP
+• GIF は最初のフレームをサムネ。展示は video か canvas 再生にフォールバック
+• サムネ生成は 512px 正方形クロップ or レターボックス
+
+既存「花スロット」からの移行指針
+• flower_slots → 廃止
+• flowers → artworks に移行（slot_id 消滅、asset_id 参照に置換）
+• 既存 QR トークンは artworks.qr_token に移設
+• 表示グリッドは display_nodes の viewport で代替

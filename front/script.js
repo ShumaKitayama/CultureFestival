@@ -1,5 +1,14 @@
-const canvas = document.getElementById("mandala-canvas");
-const ctx = canvas.getContext("2d");
+console.log("=== スクリプト読み込み開始 ===");
+
+const canvasWrapper = document.querySelector(".canvas-wrapper");
+const guideCanvas = document.getElementById("guide-canvas");
+const guideCtx = guideCanvas.getContext("2d");
+const drawCanvas = document.getElementById("mandala-canvas");
+
+// 重要: アルファチャンネルを有効にしてコンテキストを取得
+let drawCtx = drawCanvas.getContext("2d", { alpha: true, willReadFrequently: true });
+
+console.log("=== 要素取得完了 ===");
 const colorPicker = document.getElementById("pen-color");
 const widthSlider = document.getElementById("pen-width");
 const clearButton = document.getElementById("clear-button");
@@ -13,7 +22,6 @@ const bodyEl = document.body;
 // const ratioPortraitBtn = document.getElementById("ratio-portrait"); // 削除
 const ratioSquareBtn = document.getElementById("ratio-square");
 const ratioButtons = [ratioSquareBtn]; // 正方形のみに
-// const ratioButtons = [ratioLandscapeBtn, ratioPortraitBtn, ratioSquareBtn];
 
 const RATIOS = {
     // landscape: { width: 800, height: 600 }, // 削除
@@ -25,11 +33,99 @@ const RATIOS = {
 let isDrawing = false;
 let lastPoints = [];
 let centerX, centerY;
-let isFreestyleMode = false; // --- 追加：フリースタイルモードの状態 ---
+let isFreestyleMode = false; // ★機能：フリースタイルモード
 
 // --- 履歴管理の変数 ---
 let history = [];
 let historyIndex = -1;
+
+// --- 透過PNG保存用：初期状態の保存 ---
+let initialCanvasState = null;
+
+function createTransparentExportCanvas() {
+    console.log("=== エクスポート処理開始 ===");
+
+    const exportCanvas = document.createElement("canvas");
+    exportCanvas.width = drawCanvas.width;
+    exportCanvas.height = drawCanvas.height;
+
+    const exportCtx = exportCanvas.getContext("2d", {
+        alpha: true,
+        willReadFrequently: false
+    });
+
+    const sourceImageData = drawCtx.getImageData(0, 0, drawCanvas.width, drawCanvas.height);
+    const sourceData = sourceImageData.data;
+
+    const destImageData = exportCtx.createImageData(drawCanvas.width, drawCanvas.height);
+    const destData = destImageData.data;
+
+    let copiedPixels = 0;
+    let semiTransparentPixels = 0;
+    let transparentPixels = 0;
+
+    // 初期状態との差分を取る
+    if (initialCanvasState && initialCanvasState.data) {
+        const initialData = initialCanvasState.data;
+
+        // すべてのピクセルを比較
+        for (let i = 0; i < sourceData.length; i += 4) {
+            const currentR = sourceData[i];
+            const currentG = sourceData[i + 1];
+            const currentB = sourceData[i + 2];
+            const currentA = sourceData[i + 3];
+
+            const initR = initialData[i];
+            const initG = initialData[i + 1];
+            const initB = initialData[i + 2];
+            const initA = initialData[i + 3];
+
+            // 初期状態と異なるピクセルのみをコピー（これが描画された部分）
+            const isDifferent = (currentR !== initR || currentG !== initG ||
+                currentB !== initB || currentA !== initA);
+
+            if (isDifferent) {
+                destData[i] = currentR;
+                destData[i + 1] = currentG;
+                destData[i + 2] = currentB;
+                destData[i + 3] = currentA;
+
+                if (currentA === 255) {
+                    copiedPixels++;
+                } else if (currentA > 0) {
+                    semiTransparentPixels++;
+                }
+            } else {
+                // 初期状態と同じ = 背景 = 透明のまま
+                transparentPixels++;
+            }
+        }
+    } else {
+        console.warn("⚠️ 初期状態が保存されていません！フォールバックモードで動作します。");
+        // フォールバック: アルファ値が0のピクセルを透明として扱う
+        for (let i = 0; i < sourceData.length; i += 4) {
+            const a = sourceData[i + 3];
+            if (a > 0) {
+                destData[i] = sourceData[i];
+                destData[i + 1] = sourceData[i + 1];
+                destData[i + 2] = sourceData[i + 2];
+                destData[i + 3] = a;
+                copiedPixels++;
+            } else {
+                transparentPixels++;
+            }
+        }
+    }
+
+    // 処理済みのImageDataをエクスポート用キャンバスに描画
+    exportCtx.putImageData(destImageData, 0, 0);
+
+    console.log("=== エクスポート処理完了 ===");
+    console.log("描画ピクセル数:", copiedPixels + semiTransparentPixels);
+    console.log("透明ピクセル数:", transparentPixels);
+
+    return exportCanvas;
+}
 
 /**
  * 戻る/進むボタンの有効・無効を切り替える
@@ -48,82 +144,117 @@ function addHistory() {
         history = history.slice(0, historyIndex + 1);
     }
     // ImageDataを履歴に追加
-    history.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+    history.push(drawCtx.getImageData(0, 0, drawCanvas.width, drawCanvas.height));
     historyIndex++;
     updateUndoRedoButtons();
 }
 
+// --- 修正箇所 ---
 function setupCanvas(ratioKey) {
     const newSize = RATIOS[ratioKey];
-    canvas.width = newSize.width;
-    canvas.height = newSize.height;
-    canvas.style.aspectRatio = `${newSize.width} / ${newSize.height}`;
-    centerX = canvas.width / 2;
-    centerY = canvas.height / 2;
 
+    // 両方のキャンバスを同じサイズに設定
+    guideCanvas.width = newSize.width;
+    guideCanvas.height = newSize.height;
+    drawCanvas.width = newSize.width;
+    drawCanvas.height = newSize.height;
+
+    // 描画コンテキストを透明で初期化
+    const transparentImageData = drawCtx.createImageData(drawCanvas.width, drawCanvas.height);
+    drawCtx.putImageData(transparentImageData, 0, 0);
+
+    // CSSスタイルも透明に設定
+    drawCanvas.style.backgroundColor = "transparent";
+
+    if (canvasWrapper) {
+        // ★★★ ここのタイプミスを修正 ★★★
+        canvasWrapper.style.aspectRatio = `${newSize.width} / ${newSize.height}`;
+    }
+
+    centerX = drawCanvas.width / 2;
+    centerY = drawCanvas.height / 2;
+
+    // 第一層：ガイド線を描画（白い背景付き）
     drawGuidelines();
 
-    // 履歴をリセット
-    history = [ctx.getImageData(0, 0, canvas.width, canvas.height)];
+    // 初期状態を保存（透過PNG生成時に使用）
+    initialCanvasState = drawCtx.getImageData(0, 0, drawCanvas.width, drawCanvas.height);
+
+    // 履歴をリセット（第二層のみ）
+    history = [initialCanvasState];
     historyIndex = 0;
     updateUndoRedoButtons();
 
+    // ボタンの状態を更新
     ratioButtons.forEach((btn) => btn.classList.remove("active"));
-    document.getElementById(`ratio-${ratioKey}`).classList.add("active");
+    ratioSquareBtn.classList.add("active"); // 正方形をアクティブに
+
+    console.log(
+        "キャンバス初期化完了 - 描画レイヤー透過性:",
+        drawCanvas.style.backgroundColor
+    );
 }
+// --- 修正ここまで ---
 
 function drawGuidelines() {
-    ctx.strokeStyle = "#e0e0e0";
-    ctx.lineWidth = 1;
-    ctx.setLineDash([5, 3]);
-    ctx.beginPath();
-    ctx.moveTo(centerX, 0);
-    ctx.lineTo(centerX, canvas.height);
-    ctx.moveTo(0, centerY);
-    ctx.lineTo(canvas.width, centerY);
+    // ガイドレイヤーをクリア
+    guideCtx.clearRect(0, 0, guideCanvas.width, guideCanvas.height);
 
-    // 対角線ガイドの追加
-    ctx.moveTo(0, 0);
-    ctx.lineTo(canvas.width, canvas.height);
-    ctx.moveTo(canvas.width, 0);
-    ctx.lineTo(0, canvas.height);
+    // 白い背景を描画
+    guideCtx.fillStyle = "#ffffff";
+    guideCtx.fillRect(0, 0, guideCanvas.width, guideCanvas.height);
 
-    ctx.stroke();
-    ctx.setLineDash([]);
+    // ガイド線を描画
+    guideCtx.strokeStyle = "#e0e0e0";
+    guideCtx.lineWidth = 1;
+    guideCtx.setLineDash([5, 3]);
+    guideCtx.beginPath();
+    guideCtx.moveTo(centerX, 0);
+    guideCtx.lineTo(centerX, guideCanvas.height);
+    guideCtx.moveTo(0, centerY);
+    guideCtx.lineTo(guideCanvas.width, centerY);
+
+    // ★機能：対角線ガイドの追加
+    guideCtx.moveTo(0, 0);
+    guideCtx.lineTo(guideCanvas.width, guideCanvas.height);
+    guideCtx.moveTo(guideCanvas.width, 0);
+    guideCtx.lineTo(0, guideCanvas.height);
+
+    guideCtx.stroke();
+    guideCtx.setLineDash([]);
 }
 
+// ★機能：8点対称
 function getSymmetricPoints(x, y) {
     const relX = x - centerX;
     const relY = y - centerY;
 
     return [
-        // 従来の90度対称 (4点)
-        { x: relX + centerX, y: relY + centerY },     // 元の点 (0度)
-        { x: -relY + centerX, y: relX + centerY },    // 90度回転
-        { x: -relX + centerX, y: -relY + centerY },   // 180度回転
-        { x: relY + centerX, y: -relX + centerY },    // 270度回転
-
-        // 対角線対称 (新しく追加する4点)
-        { x: relY + centerX, y: relX + centerY },     // 対角線 y=x での対称
-        { x: -relX + centerX, y: relY + centerY },    // Y軸での対称
-        { x: -relY + centerX, y: -relX + centerY },   // 対角線 y=-x での対称
-        { x: relX + centerX, y: -relY + centerY },    // X軸での対称
+        { x: relX + centerX, y: relY + centerY },
+        { x: -relY + centerX, y: relX + centerY },
+        { x: -relX + centerX, y: -relY + centerY },
+        { x: relY + centerX, y: -relX + centerY },
+        { x: relY + centerX, y: relX + centerY },
+        { x: -relX + centerX, y: relY + centerY },
+        { x: -relY + centerX, y: -relX + centerY },
+        { x: relX + centerX, y: -relY + centerY },
     ];
 }
 
+
 function getCanvasCoordinates(e) {
-    const rect = canvas.getBoundingClientRect();
+    const rect = drawCanvas.getBoundingClientRect();
     const touch = e.touches ? e.touches[0] : e;
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
+    const scaleX = drawCanvas.width / rect.width;
+    const scaleY = drawCanvas.height / rect.height;
     const canvasX = (touch.clientX - rect.left) * scaleX;
     const canvasY = (touch.clientY - rect.top) * scaleY;
     return { x: canvasX, y: canvasY };
 }
 
-// --- 修正：startDrawing ---
+// ★機能：ランダム色 + フリースタイル
 function startDrawing(e) {
-    // 色をランダムに決定
+    // 一画ごとにランダムな色を生成
     const randomHex = Math.floor(Math.random() * 16777215).toString(16);
     const randomColor = `#${randomHex.padStart(6, '0')}`;
     colorPicker.value = randomColor;
@@ -131,7 +262,6 @@ function startDrawing(e) {
     isDrawing = true;
     const coords = getCanvasCoordinates(e);
 
-    // モードに応じて保存する座標を変更
     if (isFreestyleMode) {
         lastPoints = [coords]; // 自由描画モード：座標1点のみ
     } else {
@@ -139,35 +269,38 @@ function startDrawing(e) {
     }
 }
 
-// --- 修正：draw ---
+// ★機能：フリースタイル
 function draw(e) {
     if (!isDrawing) return;
     e.preventDefault();
-
     const coords = getCanvasCoordinates(e);
-    let currentPoints;
 
-    // モードに応じて現在の座標を取得
+    let currentPoints;
     if (isFreestyleMode) {
         currentPoints = [coords]; // 自由描画モード：座標1点
     } else {
         currentPoints = getSymmetricPoints(coords.x, coords.y); // シンメトリー：8点
     }
 
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.strokeStyle = colorPicker.value;
-    ctx.lineWidth = widthSlider.value;
+    // 描画レイヤーの設定
+    drawCtx.save();
+    drawCtx.globalCompositeOperation = "source-over";
+    drawCtx.globalAlpha = 1.0;
+    drawCtx.lineCap = "round";
+    drawCtx.lineJoin = "round";
+    drawCtx.strokeStyle = colorPicker.value;
+    drawCtx.lineWidth = widthSlider.value;
 
-    // lastPointsの数（1 or 8）だけループして描画
+    // 描画処理（lastPointsの数だけループ）
     for (let i = 0; i < lastPoints.length; i++) {
-        ctx.beginPath();
-        ctx.moveTo(lastPoints[i].x, lastPoints[i].y);
-        ctx.lineTo(currentPoints[i].x, currentPoints[i].y);
-        ctx.stroke();
+        drawCtx.beginPath();
+        drawCtx.moveTo(lastPoints[i].x, lastPoints[i].y);
+        drawCtx.lineTo(currentPoints[i].x, currentPoints[i].y);
+        drawCtx.stroke();
     }
 
-    lastPoints = currentPoints; // 座標を更新
+    drawCtx.restore();
+    lastPoints = currentPoints;
 }
 
 function stopDrawing() {
@@ -177,41 +310,31 @@ function stopDrawing() {
 }
 
 // --- イベントリスナー ---
-canvas.addEventListener("mousedown", startDrawing);
-canvas.addEventListener("mousemove", draw);
-canvas.addEventListener("mouseup", stopDrawing);
-canvas.addEventListener("mouseout", stopDrawing);
-canvas.addEventListener("touchstart", startDrawing, { passive: false });
-canvas.addEventListener("touchmove", draw, { passive: false });
-canvas.addEventListener("touchend", stopDrawing);
+drawCanvas.addEventListener("mousedown", startDrawing);
+drawCanvas.addEventListener("mousemove", draw);
+drawCanvas.addEventListener("mouseup", stopDrawing);
+drawCanvas.addEventListener("mouseout", stopDrawing);
+drawCanvas.addEventListener("touchstart", startDrawing, { passive: false });
+drawCanvas.addEventListener("touchmove", draw, { passive: false });
+drawCanvas.addEventListener("touchend", stopDrawing);
 
 clearButton.addEventListener("click", () => {
-    //   const currentRatio = document // 削除 (常にsquare)
-    //     .querySelector(".ratio-controls button.active")
-    //     .id.replace("ratio-", "");
-    setupCanvas("square"); // 常にsquareをセットアップ
+    setupCanvas("square"); // 正方形でリセット
 });
 
 saveButton.addEventListener("click", () => {
-    // 履歴からガイド線がない最初の状態を取得
-    const initialImageData = history[0];
-    const tempCanvas = document.createElement("canvas");
-    tempCanvas.width = canvas.width;
-    tempCanvas.height = canvas.height;
-    const tempCtx = tempCanvas.getContext("2d");
-
-    // 一時キャンバスに最初の状態（ガイド線なし）を書き込む
-    tempCtx.putImageData(initialImageData, 0, 0);
-    // その上に現在の描画内容を重ねる
-    tempCtx.drawImage(canvas, 0, 0);
+    console.log("=== 保存ボタンクリック ===");
+    // 描画レイヤーのみを透過PNGとして保存
+    const exportCanvas = createTransparentExportCanvas();
 
     const link = document.createElement("a");
-    link.href = tempCanvas.toDataURL("image/png");
+    link.href = exportCanvas.toDataURL("image/png");
     link.download = "mandala-art.png";
     link.click();
+    console.log("保存完了");
 });
 
-// --- 追加：フリースタイルモードのボタン ---
+// ★機能：フリースタイルモードのボタン ---
 const freestyleBtn = document.createElement("button");
 freestyleBtn.textContent = "自由に書く 🎨";
 freestyleBtn.id = "freestyle-btn";
@@ -219,12 +342,9 @@ freestyleBtn.style.backgroundColor = "#ffc107"; // 目立つ色
 freestyleBtn.style.color = "#212529";
 freestyleBtn.style.marginLeft = "10px";
 
-// アップロードボタンをアクションコントロールに追加
 const actionControls = document.querySelector(".action-controls");
-// --- 追加：フリースタイルボタンをクリアボタンの隣に配置 ---
 clearButton.insertAdjacentElement('afterend', freestyleBtn);
 
-// --- 追加：フリースタイルボタンのイベントリスナー ---
 freestyleBtn.addEventListener("click", () => {
     isFreestyleMode = !isFreestyleMode; // モードをトグル
 
@@ -249,32 +369,19 @@ uploadButton.id = "upload-button";
 uploadButton.style.backgroundColor = "#28a745";
 uploadButton.style.marginLeft = "10px";
 
-// アクションコントロールにアップロードボタンを追加
 actionControls.appendChild(uploadButton);
 
-// アップロード処理
 uploadButton.addEventListener("click", async () => {
     try {
-        // ガイド線なしの画像を取得
-        const initialImageData = history[0];
-        const tempCanvas = document.createElement("canvas");
-        tempCanvas.width = canvas.width;
-        tempCanvas.height = canvas.height;
-        const tempCtx = tempCanvas.getContext("2d");
-
-        tempCtx.putImageData(initialImageData, 0, 0);
-        tempCtx.drawImage(canvas, 0, 0);
-
-        // 画像をBlobに変換
+        // 描画レイヤーのみを透過PNGとしてアップロード
+        const exportCanvas = createTransparentExportCanvas();
         const blob = await new Promise((resolve) => {
-            tempCanvas.toBlob(resolve, "image/png", 0.9);
+            exportCanvas.toBlob(resolve, "image/png", 0.9);
         });
 
-        // FormDataを作成
         const formData = new FormData();
         formData.append("image", blob, "flower.png");
 
-        // アップロード実行
         uploadButton.disabled = true;
         uploadButton.textContent = "アップロード中...";
 
@@ -289,8 +396,12 @@ uploadButton.addEventListener("click", async () => {
 
         const result = await response.json();
 
-        // 成功メッセージとQRコード表示
+        // ★機能：成功メッセージとQRコード表示
         showUploadSuccess(result);
+
+        // 成功したらキャンバスをクリア
+        setupCanvas("square");
+
     } catch (error) {
         console.error("アップロードエラー:", error);
         alert("アップロードに失敗しました: " + error.message);
@@ -300,7 +411,7 @@ uploadButton.addEventListener("click", async () => {
     }
 });
 
-// アップロード成功時の処理
+// ★機能：アップロード成功時の処理 (QRコードモーダル)
 function showUploadSuccess(result) {
     // モーダル表示
     const modal = document.createElement("div");
@@ -370,8 +481,6 @@ function showUploadSuccess(result) {
     document.getElementById("close-modal").addEventListener("click", () => {
         document.body.removeChild(modal);
     });
-
-    // 背景クリックで閉じる
     modal.addEventListener("click", (e) => {
         if (e.target === modal) {
             document.body.removeChild(modal);
@@ -379,8 +488,8 @@ function showUploadSuccess(result) {
     });
 }
 
-// ratioLandscapeBtn.addEventListener("click", () => setupCanvas("landscape")); // 削除
-// ratioPortraitBtn.addEventListener("click", () => setupCanvas("portrait")); // 削除
+// ratioLandscapeBtn.addEventListener("click", () => setupCanvas("landscape"));
+// ratioPortraitBtn.addEventListener("click", () => setupCanvas("portrait"));
 ratioSquareBtn.addEventListener("click", () => setupCanvas("square"));
 
 const uiToggleBtn = document.getElementById("ui-toggle-btn");
@@ -393,19 +502,21 @@ uiToggleBtn.addEventListener("click", () => {
 undoBtn.addEventListener("click", () => {
     if (historyIndex > 0) {
         historyIndex--;
-        ctx.putImageData(history[historyIndex], 0, 0);
+        drawCtx.putImageData(history[historyIndex], 0, 0);
         updateUndoRedoButtons();
     }
 });
 redoBtn.addEventListener("click", () => {
     if (historyIndex < history.length - 1) {
         historyIndex++;
-        ctx.putImageData(history[historyIndex], 0, 0);
+        drawCtx.putImageData(history[historyIndex], 0, 0);
         updateUndoRedoButtons();
     }
 });
 
 // --- 初期化 ---
 window.addEventListener("DOMContentLoaded", () => {
-    setupCanvas("square"); // デフォルトを "square" に変更
+    console.log("=== アプリケーション開始 ===");
+    setupCanvas("square"); // 正方形で開始
+    console.log("キャンバス初期化完了");
 });
