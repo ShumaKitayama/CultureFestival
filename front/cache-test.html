@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>キャッシュテスト</title>
+</head>
+
+<body>
+    <h1>キャッシュテスト</h1>
+    <div id="version-info">
+        <p>このページは display.js が正しく読み込まれているかテストします。</p>
+        <p>コンソールを開いて確認してください。</p>
+    </div>
+
+    <h2>期待されるログ:</h2>
+    <pre>
+📦 DisplaySystem v2.0 loaded - 2025-10-29 00:02
+    </pre>
+
+    <h2>実際のログ:</h2>
+    <pre id="actual-log">コンソールを確認してください (Cmd+Option+J または F12)</pre>
+
+    <script>
+        console.log("=== CACHE TEST START ===");
+        console.log("現在時刻:", new Date().toISOString());
+        console.log("ファイルパス:", window.location.href);
+    </script>
+
+    <!-- 絶対にキャッシュされないようにタイムスタンプを追加 -->
+    <script src="display.js?nocache=<?= Date.now() ?>"></script>
+    <script>
+        // display.js読み込み後
+        if (typeof DisplaySystem !== 'undefined') {
+            console.log("✅ DisplaySystem クラスが見つかりました");
+            document.getElementById('actual-log').textContent = "✅ DisplaySystem クラスが正しく読み込まれました\nコンソールでバージョンを確認してください";
+        } else {
+            console.error("❌ DisplaySystem クラスが見つかりません");
+            document.getElementById('actual-log').textContent = "❌ DisplaySystem クラスが読み込まれていません";
+        }
+    </script>
+</body>
+
+</html>
