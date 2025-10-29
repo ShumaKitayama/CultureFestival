@@ -80,11 +80,11 @@ func (h *ArtworkHandler) Upload(c *gin.Context) {
 	if err != nil {
 		// 既存のアセットがない場合は新規作成
 		asset = &domain.Asset{
-			Path:  processedImg.Path,
-			Mime:  processedImg.Mime,
-			Width: processedImg.Width,
+			Path:   processedImg.Path,
+			Mime:   processedImg.Mime,
+			Width:  processedImg.Width,
 			Height: processedImg.Height,
-			Bytes: processedImg.Bytes,
+			Bytes:  processedImg.Bytes,
 			SHA256: processedImg.SHA256,
 		}
 
@@ -128,7 +128,7 @@ func (h *ArtworkHandler) Upload(c *gin.Context) {
 	// デフォルトシーン（ID=1）にエンティティを追加
 	sceneID := uint(1)
 	x, y, vx, vy := repo.GenerateRandomPositionAndVelocity(1920, 1080) // デフォルトサイズ
-	
+
 	entity := &domain.SceneEntity{
 		SceneID:       sceneID,
 		ArtworkID:     artwork.ID,
@@ -137,7 +137,7 @@ func (h *ArtworkHandler) Upload(c *gin.Context) {
 		InitVX:        vx,
 		InitVY:        vy,
 		InitAngle:     0,
-		InitScale:     1,
+		InitScale:     0.25,
 		AnimationKind: repo.GetNextAnimationKind(),
 		RNGSeed:       repo.GetRandomRNGSeed(),
 	}
@@ -229,14 +229,14 @@ func (h *ArtworkHandler) Download(c *gin.Context) {
 	thumb := c.Query("thumb") == "true"
 
 	fmt.Printf("Download request: token=%s, thumb=%v\n", token, thumb)
-	
+
 	artwork, err := h.artworkRepo.GetByQRToken(token)
 	if err != nil {
 		fmt.Printf("Artwork not found: token=%s, error=%v\n", token, err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Artwork not found"})
 		return
 	}
-	
+
 	fmt.Printf("Artwork found: id=%d, thumb_path=%s\n", artwork.ID, artwork.ThumbPath)
 
 	var filePath string
@@ -258,23 +258,23 @@ func (h *ArtworkHandler) Download(c *gin.Context) {
 
 func (h *ArtworkHandler) broadcastEntityAdd(entity *domain.SceneEntity, artwork *domain.Artwork, asset *domain.Asset) {
 	room := fmt.Sprintf("scene:%d", entity.SceneID)
-	
+
 	message := ws.Message{
 		Type: "entity.add",
 		Data: map[string]interface{}{
-			"entity_id": entity.ID,
-			"artwork_id": artwork.ID, // 作品IDを追加
+			"entity_id":   entity.ID,
+			"artwork_id":  artwork.ID, // 作品IDを追加
 			"artwork_url": fmt.Sprintf("/download/%s", artwork.QRToken),
 			"init": map[string]interface{}{
-				"x": entity.InitX,
-				"y": entity.InitY,
-				"vx": entity.InitVX,
-				"vy": entity.InitVY,
+				"x":     entity.InitX,
+				"y":     entity.InitY,
+				"vx":    entity.InitVX,
+				"vy":    entity.InitVY,
 				"angle": entity.InitAngle,
 				"scale": entity.InitScale,
 			},
 			"animation_kind": entity.AnimationKind,
-			"seed": entity.RNGSeed,
+			"seed":           entity.RNGSeed,
 		},
 	}
 

@@ -1,5 +1,10 @@
+// DisplaySystem v2.0 - Fixed animationState initialization and spin_fight matching
+// Last updated: 2025-10-29 00:02
+console.log("📦 DisplaySystem v2.0 loaded - 2025-10-29 00:02");
+
 class DisplaySystem {
   constructor() {
+    console.log("🚀 DisplaySystem initializing...");
     this.canvas = document.getElementById("display-canvas");
     this.ctx = this.canvas.getContext("2d");
     this.entities = new Map();
@@ -21,6 +26,10 @@ class DisplaySystem {
       height: window.innerHeight,
       scale: 1,
     };
+
+    console.log("📐 Canvas:", this.canvas ? `${this.canvas.width}x${this.canvas.height}` : "NOT FOUND");
+    console.log("🎬 Scene ID:", this.sceneId);
+    console.log("📺 Viewport:", this.viewport);
 
     this.init();
   }
@@ -138,15 +147,19 @@ class DisplaySystem {
   }
 
   init() {
+    console.log("⚙️ Starting initialization...");
     this.setupCanvas();
     this.setupWebSocket();
     this.setupEventListeners();
     this.startAnimationLoop();
+    console.log("✅ Initialization complete");
   }
 
   setupCanvas() {
+    console.log("🎨 Setting up canvas...");
     this.canvas.width = this.viewport.width;
     this.canvas.height = this.viewport.height;
+    console.log(`  Canvas size: ${this.canvas.width}x${this.canvas.height}`);
 
     // リサイズ対応
     window.addEventListener("resize", () => {
@@ -154,6 +167,7 @@ class DisplaySystem {
       this.viewport.height = window.innerHeight;
       this.canvas.width = this.viewport.width;
       this.canvas.height = this.viewport.height;
+      console.log(`  Canvas resized: ${this.canvas.width}x${this.canvas.height}`);
     });
   }
 
@@ -161,10 +175,12 @@ class DisplaySystem {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/ws`;
 
+    console.log(`🔌 Connecting to WebSocket: ${wsUrl}`);
+
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
-      console.log("WebSocket connected");
+      console.log("✅ WebSocket connected");
       this.isConnected = true;
       this.updateConnectionStatus("接続済み");
       this.sendHello();
@@ -176,12 +192,12 @@ class DisplaySystem {
         const message = JSON.parse(event.data);
         this.handleMessage(message);
       } catch (error) {
-        console.error("Failed to parse WebSocket message:", error);
+        console.error("❌ Failed to parse WebSocket message:", error);
       }
     };
 
     this.ws.onclose = () => {
-      console.log("WebSocket disconnected");
+      console.log("❌ WebSocket disconnected");
       this.isConnected = false;
       this.updateConnectionStatus("切断");
       // 5秒後に再接続を試行
@@ -189,7 +205,7 @@ class DisplaySystem {
     };
 
     this.ws.onerror = (error) => {
-      console.error("WebSocket error:", error);
+      console.error("❌ WebSocket error:", error);
       this.updateConnectionStatus("エラー");
     };
   }
@@ -208,33 +224,46 @@ class DisplaySystem {
       },
     };
 
+    console.log("👋 Sending hello message:", message);
     this.ws.send(JSON.stringify(message));
   }
 
   handleMessage(message) {
+    console.log(`📨 WebSocket message received:`, message.type);
+
     switch (message.type) {
       case "entity.add":
+        console.log(`  ➡️ Adding entity:`, message.data);
         this.addEntity(message.data);
         break;
       case "entity.remove":
+        console.log(`  ➡️ Removing entity:`, message.data.entity_id);
         this.removeEntity(message.data.entity_id);
         break;
       case "entity.delete":
+        console.log(`  ➡️ Deleting entity by artwork:`, message.data.artwork_id);
         this.removeEntityByArtworkId(message.data.artwork_id);
         break;
       case "scene.reset":
+        console.log(`  ➡️ Resetting scene`);
         this.resetScene();
         break;
       case "display.config":
+        console.log(`  ➡️ Updating viewport:`, message.data.viewport);
         this.updateViewport(message.data.viewport);
         break;
       case "clock.sync":
+        console.log(`  ➡️ Clock sync:`, message.data);
         this.syncClock(message.data);
         break;
+      default:
+        console.warn(`  ⚠️ Unknown message type:`, message.type);
     }
   }
 
   addEntity(data) {
+    console.log(`➕ addEntity called with:`, data);
+
     const entity = {
       id: data.entity_id,
       artworkId: data.artwork_id, // 作品IDを追加
@@ -253,7 +282,24 @@ class DisplaySystem {
       width: 100,
       height: 100,
       lastUpdate: Date.now(),
+      // アニメーション状態を最初から初期化
+      animationState: {
+        phase: 0,
+        lastParticleTime: 0,
+        fightTarget: null,
+        fightPhase: 0,
+        streamStartTime: Date.now() * 0.001,
+      },
     };
+
+    console.log(`✅ Entity created:`, {
+      id: entity.id,
+      artworkId: entity.artworkId,
+      position: `(${entity.x}, ${entity.y})`,
+      scale: entity.scale,
+      animation: entity.animationKind,
+      url: entity.artworkUrl
+    });
 
     // 画像を読み込み
     this.loadEntityImage(entity);
@@ -261,10 +307,11 @@ class DisplaySystem {
     this.entities.set(entity.id, entity);
     this.updateEntityCount();
 
-    console.log("Entity added:", entity.id);
+    console.log(`📊 Total entities now: ${this.entities.size}`);
   }
 
   loadEntityImage(entity) {
+    console.log(`📷 Loading image for entity ${entity.id}: ${entity.artworkUrl}`);
     const img = new Image();
     img.crossOrigin = "anonymous";
 
@@ -272,11 +319,12 @@ class DisplaySystem {
       entity.image = img;
       entity.width = img.width;
       entity.height = img.height;
-      console.log("Image loaded for entity:", entity.id);
+      console.log(`✅ Image loaded for entity ${entity.id}: ${img.width}x${img.height}`);
     };
 
     img.onerror = (e) => {
-      console.error("Failed to load image for entity:", entity.id, e);
+      console.error(`❌ Failed to load image for entity ${entity.id}:`, e);
+      console.error(`   URL: ${entity.artworkUrl}`);
       // エラー時はプレースホルダー画像を作成
       const canvas = document.createElement("canvas");
       canvas.width = 100;
@@ -291,12 +339,14 @@ class DisplaySystem {
       entity.image = canvas;
       entity.width = 100;
       entity.height = 100;
+      console.log(`⚠️ Using placeholder image for entity ${entity.id}`);
     };
 
     img.src = entity.artworkUrl;
   }
 
   loadExistingEntities() {
+    console.log(`🔄 Loading existing entities for scene ${this.sceneId}...`);
     fetch(`/api/scenes/${this.sceneId}`)
       .then((response) => {
         if (!response.ok) {
@@ -305,17 +355,35 @@ class DisplaySystem {
         return response.json();
       })
       .then((scene) => {
+        console.log(`📦 Scene data received:`, scene);
+
         if (!scene.entities || !Array.isArray(scene.entities)) {
+          console.warn(`⚠️ No entities in scene or invalid format`);
           return;
         }
 
-        scene.entities.forEach((entity) => {
-          if (this.entities.has(entity.id) || !entity.artwork) {
+        console.log(`📋 Found ${scene.entities.length} entities in scene`);
+
+        scene.entities.forEach((entity, index) => {
+          console.log(`  [${index}] Entity ${entity.id}:`, {
+            hasArtwork: !!entity.artwork,
+            animationKind: entity.animation_kind,
+            position: `(${entity.init_x}, ${entity.init_y})`
+          });
+
+          if (this.entities.has(entity.id)) {
+            console.warn(`  ⚠️ Entity ${entity.id} already exists, skipping`);
+            return;
+          }
+
+          if (!entity.artwork) {
+            console.warn(`  ⚠️ Entity ${entity.id} has no artwork, skipping`);
             return;
           }
 
           this.addEntity({
             entity_id: entity.id,
+            artwork_id: entity.artwork_id,
             artwork_url: `/download/${entity.artwork.qr_token}`,
             init: {
               x: entity.init_x,
@@ -324,15 +392,17 @@ class DisplaySystem {
               vy: entity.init_vy,
               angle: entity.init_angle,
               scale:
-                typeof entity.init_scale === "number" ? entity.init_scale : 1,
+                typeof entity.init_scale === "number" ? entity.init_scale : 0.25,
             },
             animation_kind: entity.animation_kind,
             seed: entity.rng_seed,
           });
         });
+
+        console.log(`✅ Finished loading entities. Total entities: ${this.entities.size}`);
       })
       .catch((error) => {
-        console.error("Failed to load existing entities:", error);
+        console.error("❌ Failed to load existing entities:", error);
         this.updateConnectionStatus("初期データ取得失敗");
       });
   }
@@ -432,6 +502,8 @@ class DisplaySystem {
   }
 
   startAnimationLoop() {
+    console.log("🎬 Starting animation loop...");
+
     const animate = (currentTime) => {
       // FPS計算
       this.frameCount++;
@@ -451,13 +523,22 @@ class DisplaySystem {
     };
 
     requestAnimationFrame(animate);
+    console.log("✅ Animation loop started");
   }
 
   updateEntities() {
     const now = Date.now();
     const deltaTime = 16; // 約60FPS想定
 
+    // spin_fightエンティティのマッチングを一括処理（フレームごとに1回のみ）
+    this.matchSpinFightEntities();
+
+    let spin_fight_count = 0;
     this.entities.forEach((entity) => {
+      if (entity.animationKind === "spin_fight") {
+        spin_fight_count++;
+      }
+
       // 物理演算
       this.updatePhysics(entity, deltaTime);
 
@@ -472,8 +553,105 @@ class DisplaySystem {
       }
     });
 
+    // デバッグ: spin_fightエンティティの数をログ（1秒ごと）
+    if (!this.lastDebugTime || now - this.lastDebugTime > 1000) {
+      if (spin_fight_count > 0) {
+        console.log(`spin_fight entities: ${spin_fight_count}, total entities: ${this.entities.size}`);
+      }
+      this.lastDebugTime = now;
+    }
+
     // パーティクルを更新
     this.updateParticles(deltaTime);
+  }
+
+  // spin_fightエンティティのマッチングを一括処理
+  matchSpinFightEntities() {
+    const spinFightEntities = [];
+
+    // spin_fightエンティティを収集
+    this.entities.forEach((entity, id) => {
+      if (entity.animationKind === "spin_fight") {
+        if (!entity.animationState) {
+          console.error(`❌ Entity ${id} is spin_fight but has NO animationState!`);
+          // 緊急修正: animationStateを作成
+          entity.animationState = {
+            phase: 0,
+            lastParticleTime: 0,
+            fightTarget: null,
+            fightPhase: 0,
+            streamStartTime: Date.now() * 0.001,
+          };
+          console.log(`🔧 Created missing animationState for entity ${id}`);
+        }
+        spinFightEntities.push({ id, entity });
+      }
+    });
+
+    if (spinFightEntities.length === 0) return;
+
+    console.log(`🎯 matchSpinFightEntities: Found ${spinFightEntities.length} spin_fight entities`);
+    spinFightEntities.forEach(({ id, entity }) => {
+      console.log(`  - Entity ${id}: hasAnimationState=${!!entity.animationState}, position=(${Math.round(entity.x)}, ${Math.round(entity.y)})`);
+    });
+
+    // マッチング処理
+    for (let i = 0; i < spinFightEntities.length; i++) {
+      const { id: id1, entity: entity1 } = spinFightEntities[i];
+      const state1 = entity1.animationState;
+
+      // 既にターゲットがあり、相互参照が成立している場合はスキップ
+      if (state1.fightTarget) {
+        const target = this.entities.get(state1.fightTarget);
+        if (target && target.animationState && target.animationState.fightTarget === id1) {
+          continue; // 既に正しくマッチングされている
+        }
+      }
+
+      // ターゲットを探す
+      let closestId = null;
+      let closestDistance = Infinity;
+
+      for (let j = 0; j < spinFightEntities.length; j++) {
+        if (i === j) continue;
+
+        const { id: id2, entity: entity2 } = spinFightEntities[j];
+
+        // animationStateの存在を確認
+        if (!entity2.animationState) {
+          console.warn(`⚠️ Entity ${id2} has no animationState in matchSpinFightEntities`);
+          continue;
+        }
+
+        const state2 = entity2.animationState;
+
+        // 相手が既に他のターゲットを持っている場合はスキップ
+        if (state2.fightTarget && state2.fightTarget !== id1) {
+          const otherTarget = this.entities.get(state2.fightTarget);
+          if (otherTarget) continue;
+        }
+
+        const distance = Math.sqrt(
+          Math.pow(entity1.x - entity2.x, 2) +
+          Math.pow(entity1.y - entity2.y, 2)
+        );
+
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closestId = id2;
+        }
+      }
+
+      // マッチング設定
+      if (closestId) {
+        state1.fightTarget = closestId;
+        const target = this.entities.get(closestId);
+        if (target && target.animationState) {
+          target.animationState.fightTarget = id1;
+          console.log(`🎯 spin_fight matched: ${id1} ↔ ${closestId} (distance: ${Math.round(closestDistance)})`);
+        }
+      }
+    }
   }
 
   updatePhysics(entity, deltaTime) {
@@ -512,18 +690,12 @@ class DisplaySystem {
     const time = Date.now() * 0.001;
     const entityId = entity.id;
 
-    // アニメーション状態を初期化（初回のみ）
-    if (!entity.animationState) {
-      entity.animationState = {
-        phase: 0,
-        lastParticleTime: 0,
-        fightTarget: null,
-        fightPhase: 0,
-        streamStartTime: time,
-      };
-    }
-
+    // animationStateは既にaddEntityで初期化済み
     const state = entity.animationState;
+    if (!state) {
+      console.error("animationState not initialized for entity:", entityId);
+      return;
+    }
 
     switch (entity.animationKind) {
       case "pulsate":
@@ -578,30 +750,11 @@ class DisplaySystem {
 
       case "spin_fight":
         // ベイブレード的な戦闘システム
-        if (!state.fightTarget) {
-          // 戦闘相手を探す
-          this.entities.forEach((otherEntity, otherId) => {
-            if (
-              otherId !== entityId &&
-              otherEntity.animationKind === "spin_fight" &&
-              !otherEntity.animationState.fightTarget
-            ) {
-              const distance = Math.sqrt(
-                Math.pow(entity.x - otherEntity.x, 2) +
-                  Math.pow(entity.y - otherEntity.y, 2)
-              );
-
-              if (distance < 200) {
-                state.fightTarget = otherId;
-                otherEntity.animationState.fightTarget = entityId;
-              }
-            }
-          });
-        }
+        // マッチングは matchSpinFightEntities() で一括処理済み
 
         if (state.fightTarget) {
           const target = this.entities.get(state.fightTarget);
-          if (target) {
+          if (target && target.animationState) {
             // 相手に向かって移動
             const dx = target.x - entity.x;
             const dy = target.y - entity.y;
@@ -629,7 +782,7 @@ class DisplaySystem {
             state.fightTarget = null;
           }
         } else {
-          // 通常の高速回転
+          // 通常の高速回転（相手がいない場合）
           entity.angle += deltaTime * 1.5;
         }
         break;
@@ -671,10 +824,39 @@ class DisplaySystem {
     // キャンバスをクリア
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
+    // デバッグ: 描画開始をログ
+    const entityCount = this.entities.size;
+    if (entityCount > 0 && !this.lastRenderLog) {
+      console.log(`=== RENDER START === Entities: ${entityCount}`);
+      this.entities.forEach((entity, id) => {
+        console.log(`  Entity ${id}:`, {
+          hasImage: !!entity.image,
+          x: entity.x,
+          y: entity.y,
+          scale: entity.scale,
+          angle: entity.angle,
+          animationKind: entity.animationKind
+        });
+      });
+      this.lastRenderLog = Date.now();
+    }
+
+    // 1秒後にログをリセット
+    if (this.lastRenderLog && Date.now() - this.lastRenderLog > 1000) {
+      this.lastRenderLog = null;
+    }
+
     // エンティティを描画
+    let renderedCount = 0;
     this.entities.forEach((entity) => {
-      this.renderEntity(entity);
+      const rendered = this.renderEntity(entity);
+      if (rendered) renderedCount++;
     });
+
+    // デバッグ: 描画されたエンティティ数
+    if (entityCount > 0 && renderedCount === 0) {
+      console.error(`❌ RENDER ERROR: ${entityCount} entities exist but NONE were rendered!`);
+    }
 
     // パーティクルを描画
     this.renderParticles();
@@ -685,38 +867,59 @@ class DisplaySystem {
   }
 
   renderEntity(entity) {
-    if (!entity.image) return;
+    if (!entity.image) {
+      console.warn(`⚠️ Entity ${entity.id} has no image loaded yet`);
+      return false;
+    }
 
-    this.ctx.save();
+    // 不正な値をチェック
+    if (!isFinite(entity.x) || !isFinite(entity.y) || !isFinite(entity.scale) || !isFinite(entity.angle)) {
+      console.error(`❌ Entity ${entity.id} has invalid values:`, {
+        x: entity.x,
+        y: entity.y,
+        scale: entity.scale,
+        angle: entity.angle
+      });
+      return false;
+    }
 
-    // 位置と回転、スケールを適用
-    this.ctx.translate(entity.x, entity.y);
-    this.ctx.rotate(entity.angle);
-    this.ctx.scale(entity.scale, entity.scale);
+    try {
+      this.ctx.save();
 
-    // 色の変化を適用（tintがある場合）
-    if (entity.tint) {
-      this.ctx.globalCompositeOperation = "multiply";
-      this.ctx.fillStyle = entity.tint;
-      this.ctx.fillRect(
+      // 位置と回転、スケールを適用
+      this.ctx.translate(entity.x, entity.y);
+      this.ctx.rotate(entity.angle);
+      this.ctx.scale(entity.scale, entity.scale);
+
+      // 色の変化を適用（tintがある場合）
+      if (entity.tint) {
+        this.ctx.globalCompositeOperation = "multiply";
+        this.ctx.fillStyle = entity.tint;
+        this.ctx.fillRect(
+          -entity.width / 2,
+          -entity.height / 2,
+          entity.width,
+          entity.height
+        );
+        this.ctx.globalCompositeOperation = "source-over";
+      }
+
+      // 画像を描画
+      this.ctx.drawImage(
+        entity.image,
         -entity.width / 2,
         -entity.height / 2,
         entity.width,
         entity.height
       );
-      this.ctx.globalCompositeOperation = "source-over";
+
+      this.ctx.restore();
+      return true;
+    } catch (error) {
+      console.error(`❌ Error rendering entity ${entity.id}:`, error);
+      this.ctx.restore();
+      return false;
     }
-
-    // 画像を描画
-    this.ctx.drawImage(
-      entity.image,
-      -entity.width / 2,
-      -entity.height / 2,
-      entity.width,
-      entity.height
-    );
-
-    this.ctx.restore();
   }
 
   renderDebugInfo() {
@@ -764,6 +967,12 @@ class DisplaySystem {
 }
 
 // アプリケーション開始
+console.log("🌟 Display system script loaded");
 document.addEventListener("DOMContentLoaded", () => {
-  new DisplaySystem();
+  console.log("📄 DOM Content Loaded - Initializing DisplaySystem");
+  const displaySystem = new DisplaySystem();
+
+  // グローバルにアクセス可能にしてデバッグしやすくする
+  window.displaySystem = displaySystem;
+  console.log("💡 TIP: Use 'displaySystem' in console to inspect the system");
 });
