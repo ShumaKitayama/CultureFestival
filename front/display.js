@@ -16,6 +16,10 @@ class DisplaySystem {
     this.lastTime = 0;
     this.frameCount = 0;
 
+    // マウスカーソル追跡
+    this.mouseX = null;
+    this.mouseY = null;
+
     // 20個集合→弾けリセット機能
     this.resetAnimation = {
       isActive: false,
@@ -811,6 +815,21 @@ class DisplaySystem {
     entity.x += (entity.vx * deltaTime) / 16;
     entity.y += (entity.vy * deltaTime) / 16;
 
+    // マウスカーソルへの弱い引力
+    if (this.mouseX !== null && this.mouseY !== null) {
+      const dx = this.mouseX - entity.x;
+      const dy = this.mouseY - entity.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      // 距離が近すぎず遠すぎない場合に引力を適用
+      if (distance > 50 && distance < 500) {
+        // 弱い引力（0.05の係数で調整）
+        const attractionStrength = 0.5;
+        entity.vx += (dx / distance) * attractionStrength;
+        entity.vy += (dy / distance) * attractionStrength;
+      }
+    }
+
     // 壁反射
     const margin = 50;
     if (entity.x < margin || entity.x > this.viewport.width - margin) {
@@ -1167,6 +1186,18 @@ class DisplaySystem {
 
     document.getElementById("toggle-debug").addEventListener("click", () => {
       this.debugMode = !this.debugMode;
+    });
+
+    // マウス移動イベント
+    this.canvas.addEventListener("mousemove", (e) => {
+      this.mouseX = e.clientX;
+      this.mouseY = e.clientY;
+    });
+
+    // マウスが画面外に出たら追跡を停止
+    this.canvas.addEventListener("mouseleave", () => {
+      this.mouseX = null;
+      this.mouseY = null;
     });
   }
 }
